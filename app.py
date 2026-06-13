@@ -83,6 +83,26 @@ def get_setting(key, default=""):
         row = cur.fetchone()
         return row["value"] if row else default
 
+# Keys that may be provided via st.secrets (Streamlit Cloud "Secrets" UI).
+# If present there, they take precedence over the settings table and the
+# sidebar input is shown as locked/read-only.
+SECRET_KEYS = ["slack_url", "crm_url", "smtp_host", "smtp_port", "smtp_user", "smtp_pass", "notify_email"]
+
+def get_secret(key, default=None):
+    try:
+        return st.secrets.get(key, default)
+    except Exception:
+        return default
+
+def is_locked_by_secret(key):
+    return key in SECRET_KEYS and get_secret(key) not in (None, "")
+
+def get_secret_or_setting(key, default=""):
+    val = get_secret(key)
+    if val not in (None, ""):
+        return str(val)
+    return get_setting(key, default)
+
 def normalize(text):
     return " ".join((text or "").lower().strip().split())
 
@@ -210,7 +230,7 @@ def llm_explain(lead, score, tier, fit_score, intent_score, reason, next_step):
     return r.json().get("response", "")
 
 def send_slack(lead, score, tier):
-    url = get_setting("slack_url")
+    url = get_secret_or_setting("slack_url")
     if not url:
         return False, "Keine Slack URL"
     msg = SLACK_TEMPLATES.get(tier, SLACK_TEMPLATES["Cold"]).format(company_name=lead["company_name"] or "—", contact_name=lead["contact_name"] or "—", email=lead["email"] or "—", score=score)
@@ -222,7 +242,7 @@ def send_slack(lead, score, tier):
         return False, str(e)
 
 def send_to_crm(lead, score, tier, enrichment):
-    url = get_setting("crm_url")
+    url = get_secret_or_setting("crm_url")
     if not url:
         return False, "Keine CRM URL"
     payload = {"lead_id": lead["id"], "company_name": lead["company_name"], "contact_name": lead["contact_name"], "email": lead["email"], "website": lead["website"], "score": score, "tier": tier, "enrichment": enrichment}
@@ -234,11 +254,11 @@ def send_to_crm(lead, score, tier, enrichment):
         return False, str(e)
 
 def send_email_notification(lead, score, tier):
-    smtp_host = get_setting("smtp_host")
-    smtp_port = get_setting("smtp_port", "587")
-    smtp_user = get_setting("smtp_user")
-    smtp_pass = get_setting("smtp_pass")
-    notify_to = get_setting("notify_email")
+    smtp_host = get_secret_or_setting("smtp_host")
+    smtp_port = get_secret_or_setting("smtp_port", "587")
+    smtp_user = get_secret_or_setting("smtp_user")
+    smtp_pass = get_secret_or_setting("smtp_pass")
+    notify_to = get_secret_or_setting("notify_email")
     if not all([smtp_host, smtp_user, smtp_pass, notify_to]):
         return False, "SMTP nicht konfiguriert"
     body = EMAIL_TEMPLATES.get(tier, EMAIL_TEMPLATES["Cold"]).format(contact_name=lead["contact_name"] or "Kontakt")
@@ -690,6 +710,38 @@ def empty_state(icon, text):
     """, unsafe_allow_html=True)
 
 
+def require_login():
+    """Simple password gate using st.secrets['app_password'].
+    If no password is configured, the app stays open (e.g. local dev)."""
+    app_password = get_secret("app_password")
+    if not app_password:
+        return  # no password configured -> open access (local/dev mode)
+
+    if st.session_state.get("authed"):
+        return
+
+    st.markdown("""
+    <div class="hero" style="max-width:480px; margin:8vh auto 0 auto; flex-direction:column; align-items:flex-start; gap:6px;">
+        <div class="hero-title">⚡ ScopeOS</div>
+        <div class="hero-sub">Bitte anmelden, um fortzufahren</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    _, mid, _ = st.columns([1, 1.4, 1])
+    with mid:
+        with st.form("login_form"):
+            pw = st.text_input("Passwort", type="password")
+            submitted = st.form_submit_button("Einloggen", use_container_width=True)
+        if submitted:
+            if pw == app_password:
+                st.session_state["authed"] = True
+                st.rerun()
+            else:
+                st.error("Falsches Passwort.")
+
+    st.stop()
+
+
 # ---------------------------------------------------------------------------
 # Main app
 # ---------------------------------------------------------------------------
@@ -699,6 +751,7 @@ def main():
     init_followup_tables()
     st.set_page_config(page_title="ScopeOS", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
     inject_css()
+    require_login()
 
     ollama_ok = check_ollama()
 
@@ -718,21 +771,38 @@ def main():
         crm_enabled = st.toggle("CRM", value=get_setting("crm_enabled", "true") == "true")
         email_enabled = st.toggle("E-Mail", value=get_setting("email_enabled", "true") == "true")
         with st.expander("⚙️ Verbindungen konfigurieren"):
-            slack_url = st.text_input("Slack Webhook URL", value=get_setting("slack_url", ""), type="password")
-            crm_url = st.text_input("CRM Endpoint", value=get_setting("crm_url", ""), type="password")
-            smtp_host = st.text_input("SMTP Host", value=get_setting("smtp_host", ""))
-            smtp_port = st.text_input("SMTP Port", value=get_setting("smtp_port", "587"))
-            smtp_user = st.text_input("SMTP User", value=get_setting("smtp_user", ""))
-            smtp_pass = st.text_input("SMTP Passwort", value=get_setting("smtp_pass", ""), type="password")
-            notify_email = st.text_input("Notify E-Mail", value=get_setting("notify_email", ""))
+            if any(is_locked_by_secret(k) for k in SECRET_KEYS):
+                st.caption("🔒 Felder mit Schloss sind über App-Secrets gesperrt und können hier nicht geändert werden.")
+
+            def secret_field(label, key, **kwargs):
+                if is_locked_by_secret(key):
+                    st.text_input(f"🔒 {label}", value="•••••••• (via Secrets)", disabled=True)
+                    return None
+                return st.text_input(label, value=get_setting(key, kwargs.get("default", "")), type=kwargs.get("type", "default"))
+
+            slack_url = secret_field("Slack Webhook URL", "slack_url", type="password")
+            crm_url = secret_field("CRM Endpoint", "crm_url", type="password")
+            smtp_host = secret_field("SMTP Host", "smtp_host")
+            smtp_port = secret_field("SMTP Port", "smtp_port", default="587")
+            smtp_user = secret_field("SMTP User", "smtp_user")
+            smtp_pass = secret_field("SMTP Passwort", "smtp_pass", type="password")
+            notify_email = secret_field("Notify E-Mail", "notify_email")
+
             if st.button("💾 Einstellungen speichern", use_container_width=True):
-                upsert_setting("slack_url", slack_url)
-                upsert_setting("crm_url", crm_url)
-                upsert_setting("smtp_host", smtp_host)
-                upsert_setting("smtp_port", smtp_port)
-                upsert_setting("smtp_user", smtp_user)
-                upsert_setting("smtp_pass", smtp_pass)
-                upsert_setting("notify_email", notify_email)
+                if slack_url is not None:
+                    upsert_setting("slack_url", slack_url)
+                if crm_url is not None:
+                    upsert_setting("crm_url", crm_url)
+                if smtp_host is not None:
+                    upsert_setting("smtp_host", smtp_host)
+                if smtp_port is not None:
+                    upsert_setting("smtp_port", smtp_port)
+                if smtp_user is not None:
+                    upsert_setting("smtp_user", smtp_user)
+                if smtp_pass is not None:
+                    upsert_setting("smtp_pass", smtp_pass)
+                if notify_email is not None:
+                    upsert_setting("notify_email", notify_email)
                 upsert_setting("slack_enabled", str(slack_enabled).lower())
                 upsert_setting("crm_enabled", str(crm_enabled).lower())
                 upsert_setting("email_enabled", str(email_enabled).lower())

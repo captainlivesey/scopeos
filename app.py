@@ -103,15 +103,7 @@ def upsert_lead(data):
 def bulk_upsert(df, source="bulk"):
     results = []
     for _, row in df.iterrows():
-        lead_id, dup = upsert_lead({
-            "lead_text": row.get("lead_text", ""),
-            "company_name": row.get("company_name", ""),
-            "contact_name": row.get("contact_name", ""),
-            "email": row.get("email", ""),
-            "website": row.get("website", ""),
-            "source": source,
-            "raw_payload": json.dumps(row.to_dict(), ensure_ascii=False)
-        })
+        lead_id, dup = upsert_lead({"lead_text": row.get("lead_text", ""), "company_name": row.get("company_name", ""), "contact_name": row.get("contact_name", ""), "email": row.get("email", ""), "website": row.get("website", ""), "source": source, "raw_payload": json.dumps(row.to_dict(), ensure_ascii=False)})
         results.append((lead_id, dup))
     return results
 

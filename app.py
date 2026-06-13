@@ -18,7 +18,8 @@ SEED = 42
 TEMPERATURE = 0
 
 TIER_EMOJI = {"Hot": "🔥", "Warm": "🌤️", "Cold": "❄️"}
-TIER_COLOR = {"Hot": "#ff5d5d", "Warm": "#ffb347", "Cold": "#5b8def"}
+TIER_COLOR = {"Hot": "#ff4d6d", "Warm": "#ffb347", "Cold": "#4dd8ff"}
+TIER_GLOW = {"Hot": "rgba(255,77,109,0.35)", "Warm": "rgba(255,179,71,0.30)", "Cold": "rgba(77,216,255,0.30)"}
 
 FIT_RULES = {
     "title": {"ceo": 15, "founder": 15, "coo": 12, "cmo": 12, "sales": 10, "marketing": 8, "head": 8, "manager": 5, "assistant": 0, "intern": -10},
@@ -44,6 +45,10 @@ SLACK_TEMPLATES = {
     "Warm": "🌤️ WARM LEAD — {company_name} ({contact_name}) | Score: {score}/100 | {email}",
     "Cold": "❄️ Cold Lead — {company_name} | Score: {score}/100"
 }
+
+# ---------------------------------------------------------------------------
+# Data layer (unchanged logic)
+# ---------------------------------------------------------------------------
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -344,60 +349,375 @@ def freshness_hint(created_at):
         return f"vor {mins}m"
     return f"vor {mins//60}h"
 
-def card(title, value, subtitle="", color="#ffffff"):
-    st.markdown(f"""<div style="background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 16px 16px 12px 16px;"><div style="font-size: 0.82rem; color: #9aa4b2; margin-bottom: 6px;">{title}</div><div style="font-size: 1.75rem; font-weight: 800; color: {color}; line-height: 1.1;">{value}</div><div style="font-size: 0.78rem; color: #7b8794; margin-top: 8px;">{subtitle}</div></div>""", unsafe_allow_html=True)
+# ---------------------------------------------------------------------------
+# UI helpers — modern / futuristic visual layer
+# ---------------------------------------------------------------------------
+
+def inject_css():
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    :root{
+        --bg-0:#06080d;
+        --bg-1:#0a0e16;
+        --panel:rgba(255,255,255,0.035);
+        --panel-strong:rgba(255,255,255,0.06);
+        --border:rgba(255,255,255,0.08);
+        --border-soft:rgba(255,255,255,0.05);
+        --text:#eaf0f7;
+        --text-dim:#8a96a8;
+        --accent:#7dd3fc;
+        --accent-2:#a78bfa;
+        --hot:#ff4d6d;
+        --warm:#ffb347;
+        --cold:#4dd8ff;
+    }
+
+    html, body, [class*='css']{
+        font-family:'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    .stApp{
+        background:
+            radial-gradient(1200px 700px at 85% -10%, rgba(124,92,255,0.16), transparent 60%),
+            radial-gradient(900px 600px at -5% 10%, rgba(77,216,255,0.10), transparent 55%),
+            linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 100%);
+        color:var(--text);
+    }
+
+    /* Sidebar */
+    section[data-testid='stSidebar']{
+        background:linear-gradient(180deg, #060a10 0%, #08101a 100%);
+        border-right:1px solid var(--border-soft);
+    }
+    section[data-testid='stSidebar'] .block-container{padding-top:1.4rem;}
+
+    .block-container{padding-top:1.2rem; padding-bottom:3rem; max-width:1400px;}
+
+    /* Headings */
+    h1, h2, h3{
+        font-family:'Space Grotesk', sans-serif !important;
+        letter-spacing:-0.01em;
+    }
+
+    /* Tabs */
+    .stTabs [data-baseweb='tab-list']{ gap:6px; border-bottom:1px solid var(--border-soft); }
+    .stTabs [data-baseweb='tab']{
+        background:transparent;
+        border-radius:10px 10px 0 0;
+        padding:10px 18px;
+        color:var(--text-dim);
+        font-weight:600;
+        font-size:0.92rem;
+        transition:all .15s ease;
+    }
+    .stTabs [data-baseweb='tab']:hover{ color:var(--text); background:rgba(255,255,255,0.03); }
+    .stTabs [aria-selected='true']{
+        background:linear-gradient(180deg, rgba(125,211,252,0.12), rgba(167,139,250,0.06)) !important;
+        color:var(--text) !important;
+        box-shadow: inset 0 -2px 0 var(--accent);
+    }
+
+    /* Buttons */
+    .stButton > button{
+        border-radius:10px;
+        border:1px solid var(--border);
+        background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+        color:var(--text);
+        font-weight:600;
+        transition:all .15s ease;
+    }
+    .stButton > button:hover{
+        border-color:var(--accent);
+        box-shadow:0 0 0 1px var(--accent), 0 0 18px rgba(125,211,252,0.18);
+        color:var(--accent);
+    }
+    .stDownloadButton > button{
+        border-radius:10px;
+        border:1px solid var(--border);
+        background:linear-gradient(135deg, rgba(125,211,252,0.10), rgba(167,139,250,0.10));
+        font-weight:600;
+    }
+
+    /* Inputs */
+    .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb='select'] > div, .stMultiSelect div[data-baseweb='select'] > div{
+        background:rgba(255,255,255,0.03) !important;
+        border:1px solid var(--border) !important;
+        border-radius:10px !important;
+        color:var(--text) !important;
+    }
+    .stTextInput input:focus, .stTextArea textarea:focus{
+        border-color:var(--accent) !important;
+        box-shadow:0 0 0 1px var(--accent) !important;
+    }
+
+    /* Expander */
+    .streamlit-expanderHeader{
+        background:rgba(255,255,255,0.03);
+        border-radius:10px;
+        border:1px solid var(--border-soft);
+        font-weight:600;
+    }
+
+    /* Dataframe */
+    [data-testid='stDataFrame']{ border-radius:12px; overflow:hidden; border:1px solid var(--border-soft); }
+
+    /* Toggle */
+    .stToggle{ font-weight:600; }
+
+    /* Divider */
+    hr{ border-color:var(--border-soft) !important; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar{ width:10px; height:10px; }
+    ::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.08); border-radius:6px; }
+    ::-webkit-scrollbar-track{ background:transparent; }
+
+    /* ---- Custom components ---- */
+
+    .hero{
+        display:flex; align-items:center; justify-content:space-between;
+        padding:22px 28px;
+        border-radius:20px;
+        border:1px solid var(--border-soft);
+        background:linear-gradient(135deg, rgba(125,211,252,0.07), rgba(167,139,250,0.05));
+        margin-bottom:1.4rem;
+        position:relative;
+        overflow:hidden;
+    }
+    .hero::before{
+        content:'';
+        position:absolute; inset:0;
+        background:radial-gradient(500px 200px at 90% 0%, rgba(125,211,252,0.18), transparent 70%);
+        pointer-events:none;
+    }
+    .hero-title{
+        font-family:'Space Grotesk', sans-serif;
+        font-size:2.1rem; font-weight:800;
+        background:linear-gradient(90deg, #ffffff 20%, var(--accent) 60%, var(--accent-2) 100%);
+        -webkit-background-clip:text; background-clip:text; color:transparent;
+        margin:0; line-height:1.1;
+    }
+    .hero-sub{ color:var(--text-dim); font-size:0.95rem; margin-top:4px; }
+    .hero-status{
+        display:flex; align-items:center; gap:8px;
+        font-size:0.8rem; font-weight:600; color:var(--text-dim);
+        padding:8px 14px; border-radius:999px;
+        border:1px solid var(--border-soft);
+        background:rgba(255,255,255,0.03);
+    }
+    .dot{ width:8px; height:8px; border-radius:50%; display:inline-block; }
+    .dot-on{ background:#3ee08a; box-shadow:0 0 8px #3ee08a; }
+    .dot-off{ background:#ff4d6d; box-shadow:0 0 8px #ff4d6d; }
+
+    .stat-card{
+        background:var(--panel);
+        border:1px solid var(--border-soft);
+        border-radius:16px;
+        padding:16px 18px 14px 18px;
+        position:relative;
+        overflow:hidden;
+        transition:transform .15s ease, border-color .15s ease;
+    }
+    .stat-card:hover{ transform:translateY(-2px); border-color:rgba(255,255,255,0.16); }
+    .stat-card .glow{
+        position:absolute; top:-30px; right:-30px; width:90px; height:90px; border-radius:50%;
+        filter:blur(30px); opacity:0.5;
+    }
+    .stat-label{ font-size:0.78rem; color:var(--text-dim); font-weight:600; text-transform:uppercase; letter-spacing:0.06em; }
+    .stat-value{ font-family:'Space Grotesk', sans-serif; font-size:2rem; font-weight:800; line-height:1.15; margin-top:6px; }
+    .stat-sub{ font-size:0.78rem; color:var(--text-dim); margin-top:8px; }
+
+    .section-title{
+        display:flex; align-items:center; gap:10px;
+        font-family:'Space Grotesk', sans-serif;
+        font-weight:700; font-size:1.05rem;
+        margin:18px 0 10px 0;
+        padding-bottom:8px;
+        border-bottom:1px solid var(--border-soft);
+    }
+    .section-pill{
+        font-size:0.72rem; font-weight:700; padding:2px 9px; border-radius:999px;
+        border:1px solid var(--border-soft); color:var(--text-dim);
+    }
+
+    .lead-card{
+        position:relative;
+        background:linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015));
+        border:1px solid var(--border-soft);
+        border-radius:16px;
+        padding:16px 18px 12px 18px;
+        margin-bottom:12px;
+        transition:transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+    }
+    .lead-card:hover{
+        transform:translateY(-1px);
+        border-color:rgba(255,255,255,0.14);
+    }
+    .lead-card::before{
+        content:''; position:absolute; left:0; top:14px; bottom:14px; width:3px; border-radius:3px;
+    }
+    .lead-card.tier-hot::before{ background:var(--hot); box-shadow:0 0 10px var(--hot); }
+    .lead-card.tier-warm::before{ background:var(--warm); box-shadow:0 0 10px var(--warm); }
+    .lead-card.tier-cold::before{ background:var(--cold); box-shadow:0 0 10px var(--cold); }
+    .lead-card.tier-none::before{ background:var(--text-dim); }
+
+    .lead-company{ font-size:1.02rem; font-weight:700; color:var(--text); }
+    .lead-meta{ font-size:0.8rem; color:var(--text-dim); margin-top:2px; }
+    .lead-link{ font-size:0.85rem; color:var(--accent) !important; text-decoration:none; }
+    .lead-link:hover{ text-decoration:underline; }
+    .lead-next{ font-size:0.8rem; color:var(--text-dim); margin-top:10px; }
+    .lead-next b{ color:var(--text); }
+
+    .score-ring{
+        width:54px; height:54px; border-radius:50%;
+        display:flex; align-items:center; justify-content:center;
+        font-family:'Space Grotesk', sans-serif; font-weight:800; font-size:1.05rem;
+        border:3px solid currentColor;
+        margin:0 auto;
+    }
+    .score-unit{ font-size:0.6rem; color:var(--text-dim); text-align:center; margin-top:4px; font-weight:600; }
+
+    .tier-badge{
+        display:inline-flex; align-items:center; gap:6px;
+        padding:4px 11px; border-radius:999px; font-size:0.78rem; font-weight:700;
+        border:1px solid var(--border-soft);
+    }
+
+    .badge-hot{ color:var(--hot); background:rgba(255,77,109,0.10); border-color:rgba(255,77,109,0.25); }
+    .badge-warm{ color:var(--warm); background:rgba(255,179,71,0.10); border-color:rgba(255,179,71,0.25); }
+    .badge-cold{ color:var(--cold); background:rgba(77,216,255,0.10); border-color:rgba(77,216,255,0.25); }
+
+    .timestamp-chip{
+        font-size:0.72rem; color:var(--text-dim);
+        margin-top:6px; display:block; text-align:right;
+    }
+
+    .empty-state{
+        text-align:center; padding:50px 20px;
+        border:1px dashed var(--border-soft); border-radius:16px;
+        color:var(--text-dim);
+    }
+    .empty-state .icon{ font-size:2.4rem; margin-bottom:8px; }
+
+    .source-code-box{
+        font-family:'JetBrains Mono', monospace;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def hero_header(ollama_ok):
+    status_dot = "dot-on" if ollama_ok else "dot-off"
+    status_text = "Ollama Online" if ollama_ok else "Ollama Offline"
+    st.markdown(f"""
+    <div class="hero">
+        <div>
+            <div class="hero-title">⚡ ScopeOS</div>
+            <div class="hero-sub">Automation-first B2B Lead Operating System</div>
+        </div>
+        <div class="hero-status"><span class="dot {status_dot}"></span>{status_text}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def stat_card(title, value, subtitle="", color="#eaf0f7", icon="◆"):
+    st.markdown(f"""
+    <div class="stat-card">
+        <div class="glow" style="background:{color};"></div>
+        <div class="stat-label">{icon} {title}</div>
+        <div class="stat-value" style="color:{color};">{value}</div>
+        <div class="stat-sub">{subtitle}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def section_title(text, pill=None):
+    pill_html = f'<span class="section-pill">{pill}</span>' if pill else ""
+    st.markdown(f'<div class="section-title">{text}{pill_html}</div>', unsafe_allow_html=True)
+
 
 def lead_row(row):
     score_val = row["score"]
-    color_s = "#ff5d5d" if score_val is not None and score_val >= 70 else "#ffb347" if score_val is not None and score_val >= 40 else "#5b8def"
+    tier = row["tier"]
+    tier_class = {"Hot": "tier-hot", "Warm": "tier-warm", "Cold": "tier-cold"}.get(tier, "tier-none")
+    color_s = TIER_COLOR.get(tier, "#8a96a8")
+    badge_class = {"Hot": "badge-hot", "Warm": "badge-warm", "Cold": "badge-cold"}.get(tier, "")
+
     with st.container():
-        st.markdown("<div style='background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: 16px 16px 10px 16px; margin-bottom: 12px;'>", unsafe_allow_html=True)
-        c1, c2, c3, c4, c5 = st.columns([2.7, 2.0, 2.0, 1.2, 1.3])
+        st.markdown(f'<div class="lead-card {tier_class}">', unsafe_allow_html=True)
+        c1, c2, c3, c4, c5 = st.columns([2.8, 2.0, 2.0, 1.0, 1.3])
         with c1:
-            st.markdown(f"**{row['company']}**")
-            st.caption(f"👤 {row['contact']} · {row['source']}")
+            st.markdown(f'<div class="lead-company">{row["company"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="lead-meta">👤 {row["contact"]} &nbsp;·&nbsp; 📡 {row["source"]}</div>', unsafe_allow_html=True)
         with c2:
             if row["email"] and row["email"] != "—":
-                st.markdown(f"📧 [{row['email']}](mailto:{row['email']})")
+                st.markdown(f'<a class="lead-link" href="mailto:{row["email"]}">📧 {row["email"]}</a>', unsafe_allow_html=True)
             else:
-                st.caption("📧 kein E-Mail-Wert")
+                st.markdown('<div class="lead-meta">📧 kein E-Mail-Wert</div>', unsafe_allow_html=True)
         with c3:
             if row["website"] and row["website"] != "—":
                 url = row["website"] if str(row["website"]).startswith("http") else f"https://{row['website']}"
-                st.markdown(f"🌐 [{row['website']}]({url})")
+                st.markdown(f'<a class="lead-link" href="{url}" target="_blank">🌐 {row["website"]}</a>', unsafe_allow_html=True)
             else:
-                st.caption("🌐 keine Website")
+                st.markdown('<div class="lead-meta">🌐 keine Website</div>', unsafe_allow_html=True)
         with c4:
-            st.markdown(f"<div style='text-align:center'><div style='font-size:1.45rem;font-weight:800;color:{color_s}'>{score_val if score_val is not None else '—'}</div><div style='font-size:0.72rem;color:#8d98a6;'>/100</div></div>", unsafe_allow_html=True)
+            if score_val is not None:
+                st.markdown(f"""
+                <div class="score-ring" style="color:{color_s};">{score_val}</div>
+                <div class="score-unit">/ 100</div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown('<div style="text-align:center;color:var(--text-dim);">—</div>', unsafe_allow_html=True)
         with c5:
-            st.caption(f"{TIER_EMOJI.get(row['tier'], '')} {row['tier']}")
-            st.caption(f"🕒 {freshness_hint(row['created_at'])}")
-        st.caption(f"↳ {row['next_step']}")
+            if tier in TIER_EMOJI:
+                st.markdown(f'<span class="tier-badge {badge_class}">{TIER_EMOJI[tier]} {tier}</span>', unsafe_allow_html=True)
+            else:
+                st.markdown('<span class="tier-badge">— unbewertet</span>', unsafe_allow_html=True)
+            st.markdown(f'<div class="timestamp-chip">🕒 {freshness_hint(row["created_at"])}</div>', unsafe_allow_html=True)
+
+        st.markdown(f'<div class="lead-next">↳ <b>Next step:</b> {row["next_step"]}</div>', unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
+
+
+def empty_state(icon, text):
+    st.markdown(f"""
+    <div class="empty-state">
+        <div class="icon">{icon}</div>
+        <div>{text}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
+# Main app
+# ---------------------------------------------------------------------------
 
 def main():
     init_db()
     init_followup_tables()
-    st.set_page_config(page_title="ScopeOS", page_icon="🎯", layout="wide", initial_sidebar_state="expanded")
-    st.markdown("""<style>
-    html, body, [class*='css'] { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-    .stApp { background: linear-gradient(180deg, #0b0f14 0%, #0f141b 100%); color: #e5ecf3; }
-    section[data-testid='stSidebar'] { background: #0c1117; border-right: 1px solid rgba(255,255,255,0.07); }
-    .block-container { padding-top: 1.1rem; padding-bottom: 2rem; }
-    .stTabs [data-baseweb='tab'] { background: rgba(255,255,255,0.03); border-radius: 12px 12px 0 0; padding: 10px 14px; }
-    .stTabs [aria-selected='true'] { background: rgba(255,255,255,0.08) !important; }
-    </style>""", unsafe_allow_html=True)
+    st.set_page_config(page_title="ScopeOS", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
+    inject_css()
+
+    ollama_ok = check_ollama()
 
     with st.sidebar:
-        st.markdown("## ScopeOS")
+        st.markdown("## ⚡ ScopeOS")
         st.caption("B2B Lead Automation OS")
         st.divider()
-        st.success("Ollama läuft") if check_ollama() else st.error("Ollama offline")
-        st.markdown("### Integrationen")
+        st.markdown(f"""
+        <div class="hero-status" style="width:100%;justify-content:flex-start;margin-bottom:14px;">
+            <span class="dot {'dot-on' if ollama_ok else 'dot-off'}"></span>
+            {'Ollama läuft' if ollama_ok else 'Ollama offline'}
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("### 🔌 Integrationen")
         slack_enabled = st.toggle("Slack", value=get_setting("slack_enabled", "true") == "true")
         crm_enabled = st.toggle("CRM", value=get_setting("crm_enabled", "true") == "true")
         email_enabled = st.toggle("E-Mail", value=get_setting("email_enabled", "true") == "true")
-        with st.expander("Verbindungen konfigurieren"):
+        with st.expander("⚙️ Verbindungen konfigurieren"):
             slack_url = st.text_input("Slack Webhook URL", value=get_setting("slack_url", ""), type="password")
             crm_url = st.text_input("CRM Endpoint", value=get_setting("crm_url", ""), type="password")
             smtp_host = st.text_input("SMTP Host", value=get_setting("smtp_host", ""))
@@ -405,7 +725,7 @@ def main():
             smtp_user = st.text_input("SMTP User", value=get_setting("smtp_user", ""))
             smtp_pass = st.text_input("SMTP Passwort", value=get_setting("smtp_pass", ""), type="password")
             notify_email = st.text_input("Notify E-Mail", value=get_setting("notify_email", ""))
-            if st.button("Einstellungen speichern", use_container_width=True):
+            if st.button("💾 Einstellungen speichern", use_container_width=True):
                 upsert_setting("slack_url", slack_url)
                 upsert_setting("crm_url", crm_url)
                 upsert_setting("smtp_host", smtp_host)
@@ -416,36 +736,35 @@ def main():
                 upsert_setting("slack_enabled", str(slack_enabled).lower())
                 upsert_setting("crm_enabled", str(crm_enabled).lower())
                 upsert_setting("email_enabled", str(email_enabled).lower())
-                st.success("Gespeichert")
+                st.success("Gespeichert ✓")
 
     leads_count, analyses_count, activities_count, tier_counts, today_count, week_count = get_stats()
-    st.markdown("# ScopeOS")
-    st.caption("Automation-first B2B Lead OS")
-    st.divider()
+
+    hero_header(ollama_ok)
 
     cols = st.columns(7)
     stats = [
-        ("Leads gesamt", leads_count, "Gespeicherte Leads", "#f3f7ff"),
-        ("Hot", tier_counts.get("Hot", 0), "Priorisierte Leads", TIER_COLOR["Hot"]),
-        ("Warm", tier_counts.get("Warm", 0), "Mittlere Priorität", TIER_COLOR["Warm"]),
-        ("Cold", tier_counts.get("Cold", 0), "Nurture-Kandidaten", TIER_COLOR["Cold"]),
-        ("Heute", today_count, "Neue Leads heute", "#cbe7ff"),
-        ("7 Tage", week_count, "Neue Leads diese Woche", "#cbe7ff"),
-        ("Aktionen", activities_count, "Automations-Events", "#ffffff"),
+        ("Leads gesamt", leads_count, "Gespeicherte Leads", "#eaf0f7", "📋"),
+        ("Hot", tier_counts.get("Hot", 0), "Priorisierte Leads", TIER_COLOR["Hot"], "🔥"),
+        ("Warm", tier_counts.get("Warm", 0), "Mittlere Priorität", TIER_COLOR["Warm"], "🌤️"),
+        ("Cold", tier_counts.get("Cold", 0), "Nurture-Kandidaten", TIER_COLOR["Cold"], "❄️"),
+        ("Heute", today_count, "Neue Leads heute", "#a78bfa", "✨"),
+        ("7 Tage", week_count, "Neue Leads diese Woche", "#a78bfa", "📈"),
+        ("Aktionen", activities_count, "Automations-Events", "#7dd3fc", "⚙️"),
     ]
     for c, s in zip(cols, stats):
         with c:
-            card(*s)
+            stat_card(*s)
 
-    st.divider()
+    st.markdown("<div style='height:1.2rem'></div>", unsafe_allow_html=True)
     tab_pipeline, tab_leads_add, tab_analyse, tab_followup, tab_quellen, tab_log = st.tabs([
-        "Pipeline", "Leads hinzufügen", "Analyse & Automationen", "Follow-up", "Quellen & Webhooks", "Aktivitäten-Log"
+        "🚀 Pipeline", "➕ Leads hinzufügen", "🧠 Analyse & Automationen", "🔁 Follow-up", "🔗 Quellen & Webhooks", "📜 Aktivitäten-Log"
     ])
 
     with tab_pipeline:
         df_all = get_lead_table()
         if df_all.empty:
-            st.info("Noch keine Leads vorhanden.")
+            empty_state("🌌", "Noch keine Leads vorhanden — füge deinen ersten Lead unter <b>Leads hinzufügen</b> hinzu.")
         else:
             f1, f2, f3, f4 = st.columns([2, 2, 2, 2])
             with f1:
@@ -454,7 +773,7 @@ def main():
                 source_opts = ["Alle"] + sorted(df_all["source"].dropna().astype(str).unique().tolist())
                 source_filter = st.selectbox("Quelle", source_opts, index=0)
             with f3:
-                search_term = st.text_input("Suche", placeholder="Firma, Kontakt oder E-Mail...")
+                search_term = st.text_input("Suche", placeholder="🔍 Firma, Kontakt oder E-Mail...")
             with f4:
                 sort_by = st.selectbox("Sortieren nach", ["most recent", "score", "tier", "company"], index=0)
             t1, _ = st.columns([2, 6])
@@ -485,20 +804,31 @@ def main():
             elif sort_by == "tier":
                 df_view["_tier_ord"] = df_view["tier"].map({"Hot": 1, "Warm": 2, "Cold": 3}).fillna(99)
                 df_view = df_view.sort_values(["_tier_ord", "created_at"], ascending=[True, False]).drop(columns=["_tier_ord"])
-            st.caption(f"{len(df_view)} Leads gefunden")
-            st.divider()
-            for tier in ["Hot", "Warm", "Cold"]:
-                tier_df = df_view[df_view["tier"] == tier]
-                if tier_df.empty:
-                    continue
-                st.markdown(f"### {TIER_EMOJI[tier]} {tier} Leads ({len(tier_df)})")
-                for _, row in tier_df.iterrows():
-                    lead_row(row)
-            st.download_button("Pipeline als CSV exportieren", df_view.to_csv(index=False).encode("utf-8"), file_name=f"scopeos_pipeline_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", mime="text/csv")
+
+            st.markdown(f"<div style='color:var(--text-dim); font-size:0.85rem; margin:10px 0;'>{len(df_view)} Leads gefunden</div>", unsafe_allow_html=True)
+
+            if df_view.empty:
+                empty_state("🔍", "Keine Leads passen zu deinen Filtern.")
+            else:
+                for tier in ["Hot", "Warm", "Cold"]:
+                    tier_df = df_view[df_view["tier"] == tier]
+                    if tier_df.empty:
+                        continue
+                    section_title(f"{TIER_EMOJI[tier]} {tier} Leads", pill=f"{len(tier_df)}")
+                    for _, row in tier_df.iterrows():
+                        lead_row(row)
+
+                other_df = df_view[~df_view["tier"].isin(["Hot", "Warm", "Cold"])]
+                if not other_df.empty:
+                    section_title("⚪ Unbewertet", pill=f"{len(other_df)}")
+                    for _, row in other_df.iterrows():
+                        lead_row(row)
+
+            st.download_button("⬇️ Pipeline als CSV exportieren", df_view.to_csv(index=False).encode("utf-8"), file_name=f"scopeos_pipeline_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", mime="text/csv")
 
     with tab_leads_add:
-        st.markdown("### Leads hinzufügen")
-        sub1, sub2, sub3, sub4 = st.tabs(["Einzellead", "Bulk Paste", "CSV Import", "Webhook Simulator"])
+        st.markdown("### ➕ Leads hinzufügen")
+        sub1, sub2, sub3, sub4 = st.tabs(["✍️ Einzellead", "📋 Bulk Paste", "📁 CSV Import", "🪝 Webhook Simulator"])
         with sub1:
             with st.form("single_lead"):
                 lead_text = st.text_area("Leadbeschreibung / Notiz")
@@ -532,14 +862,14 @@ def main():
         with sub2:
             st.markdown("### Bulk Paste")
             bulk_text = st.text_area("Leads einfügen", height=220)
-            if st.button("Vorschau", use_container_width=True) and bulk_text.strip():
+            if st.button("👁️ Vorschau", use_container_width=True) and bulk_text.strip():
                 st.session_state["bulk_df"] = parse_bulk_text(bulk_text)
             bulk_df = st.session_state.get("bulk_df", pd.DataFrame())
             if not bulk_df.empty:
                 edited = st.data_editor(bulk_df, num_rows="dynamic", use_container_width=True, key="bulk_ed")
                 c1, c2 = st.columns(2)
                 with c1:
-                    if st.button("Nur speichern", use_container_width=True):
+                    if st.button("💾 Nur speichern", use_container_width=True):
                         df = edited.fillna("")
                         df = df[df.apply(lambda r: any(str(v).strip() for v in r), axis=1)]
                         res = bulk_upsert(df, source="bulk_paste")
@@ -547,7 +877,7 @@ def main():
                         st.session_state.pop("bulk_df", None)
                         st.rerun()
                 with c2:
-                    if st.button("Speichern & Analysieren", use_container_width=True):
+                    if st.button("⚡ Speichern & Analysieren", use_container_width=True):
                         df = edited.fillna("")
                         df = df[df.apply(lambda r: any(str(v).strip() for v in r), axis=1)]
                         res = bulk_upsert(df, source="bulk_paste")
@@ -570,12 +900,12 @@ def main():
                     edited_csv = st.data_editor(df, num_rows="dynamic", use_container_width=True)
                     c1, c2 = st.columns(2)
                     with c1:
-                        if st.button("Importieren", use_container_width=True):
+                        if st.button("📥 Importieren", use_container_width=True):
                             res = bulk_upsert(edited_csv.fillna(""), source="csv")
                             st.success(f"{sum(1 for _, d in res if not d)} neu")
                             st.rerun()
                     with c2:
-                        if st.button("Importieren & Analysieren", use_container_width=True):
+                        if st.button("⚡ Importieren & Analysieren", use_container_width=True):
                             bulk_upsert(edited_csv.fillna(""), source="csv")
                             with st.spinner("Läuft..."):
                                 ares = analyze_all(skip_existing=True, run_automations=True)
@@ -589,7 +919,7 @@ def main():
             payload_text = st.text_area("JSON Payload", value=default_payload, height=220)
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("Simulieren", use_container_width=True):
+                if st.button("🪝 Simulieren", use_container_width=True):
                     lead_id, dup = simulate_webhook(payload_text)
                     if lead_id:
                         st.success(f"Lead #{lead_id} {'(Duplikat)' if dup else 'gespeichert'}")
@@ -597,7 +927,7 @@ def main():
                         st.error("Ungültiges JSON")
                     st.rerun()
             with c2:
-                if st.button("Simulieren & Analysieren", use_container_width=True):
+                if st.button("⚡ Simulieren & Analysieren", use_container_width=True):
                     lead_id, dup = simulate_webhook(payload_text)
                     if lead_id:
                         with get_connection() as conn:
@@ -611,16 +941,16 @@ def main():
                         st.rerun()
 
     with tab_analyse:
-        st.markdown("### Analyse & Automationen")
+        st.markdown("### 🧠 Analyse & Automationen")
         c1, c2, c3 = st.columns(3)
         with c1:
-            if st.button("Neue analysieren", use_container_width=True):
+            if st.button("✨ Neue analysieren", use_container_width=True):
                 with st.spinner("Analysiere..."):
                     res = analyze_all(skip_existing=True, run_automations=True)
                 st.success(f"{len(res)} analysiert")
                 st.rerun()
         with c2:
-            if st.button("Alle neu berechnen", use_container_width=True):
+            if st.button("🔄 Alle neu berechnen", use_container_width=True):
                 with get_connection() as conn:
                     conn.execute("DELETE FROM analyses")
                     conn.commit()
@@ -629,7 +959,7 @@ def main():
                 st.success(f"{len(res)} neu berechnet")
                 st.rerun()
         with c3:
-            if st.button("Aktivitäten löschen", use_container_width=True):
+            if st.button("🗑️ Aktivitäten löschen", use_container_width=True):
                 with get_connection() as conn:
                     conn.execute("DELETE FROM activities")
                     conn.commit()
@@ -637,10 +967,10 @@ def main():
                 st.rerun()
 
     with tab_followup:
-        st.markdown("### Follow-up Automation")
+        st.markdown("### 🔁 Follow-up Automation")
         c1, c2, c3 = st.columns(3)
         with c1:
-            if st.button("Due Sequenzen ausführen", use_container_width=True):
+            if st.button("▶️ Due Sequenzen ausführen", use_container_width=True):
                 with st.spinner("Follow-ups werden geprüft..."):
                     results = run_due_sequences()
                 st.success(f"{len(results)} Sequenzen verarbeitet")
@@ -650,30 +980,34 @@ def main():
                 lead_options = {f"#{row.id} | {row.company} | {row.contact} | {row.email}": row.id for _, row in df_leads.iterrows() if str(row.email) != "—"}
                 if lead_options:
                     selected_label = st.selectbox("Lead auswählen", list(lead_options.keys()))
-                    if st.button("Follow-up für Lead starten", use_container_width=True):
+                    if st.button("🚀 Follow-up für Lead starten", use_container_width=True):
                         seq_id = create_followup_from_lead(lead_options[selected_label], delay_days=0)
                         st.success(f"Sequenz #{seq_id} gestartet")
         with c3:
-            if st.button("Refresh", use_container_width=True):
+            if st.button("🔄 Refresh", use_container_width=True):
                 st.rerun()
+
         active = get_active_sequences()
         if active:
+            section_title("Aktive Sequenzen", pill=f"{len(active)}")
             for seq in active:
                 with st.expander(f"Lead #{seq['lead_id']} | Stage {seq['stage']} | {seq['status']}"):
                     st.write({"Sequence ID": seq["id"], "Lead ID": seq["lead_id"], "Stage": seq["stage"], "Status": seq["status"], "Next Run": seq["next_run_at"], "Last Sent": seq["last_sent_at"], "Channel": seq["channel"]})
         else:
-            st.info("Keine aktiven Follow-up-Sequenzen.")
+            empty_state("💤", "Keine aktiven Follow-up-Sequenzen.")
 
     with tab_quellen:
-        st.markdown("### Quellen & Webhooks")
+        st.markdown("### 🔗 Quellen & Webhooks")
         df_src = get_lead_table()
         if not df_src.empty:
             source_stats = df_src.groupby("source").agg(Anzahl=("id", "count"), Hot=("tier", lambda x: (x == "Hot").sum()), Warm=("tier", lambda x: (x == "Warm").sum()), Cold=("tier", lambda x: (x == "Cold").sum())).reset_index().rename(columns={"source": "Quelle"})
             st.dataframe(source_stats, use_container_width=True)
+        st.markdown('<div class="source-code-box">', unsafe_allow_html=True)
         st.code("POST /webhook/tally\nPOST /webhook/generic\nPOST /webhook/lead", language=None)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     with tab_log:
-        st.markdown("### Aktivitäten-Log")
+        st.markdown("### 📜 Aktivitäten-Log")
         c1, c2 = st.columns([3, 1])
         with c1:
             log_filter = st.multiselect("Typ filtern", ["slack", "crm", "email", "workflow", "gmail_scan", "webhook_ingest", "generic_ingest"], default=[])
@@ -694,6 +1028,8 @@ def main():
                         st.json(json.loads(act["payload"]))
                     except Exception:
                         st.write(act["payload"])
+        else:
+            empty_state("📭", "Noch keine Aktivitäten geloggt.")
 
 if __name__ == "__main__":
     main()

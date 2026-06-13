@@ -19,34 +19,12 @@ TEMPERATURE = 0
 
 TIER_EMOJI = {"Hot": "🔥", "Warm": "🌤️", "Cold": "❄️"}
 TIER_COLOR = {"Hot": "#ff5d5d", "Warm": "#ffb347", "Cold": "#5b8def"}
-SOURCE_ICON = {
-    "gmail": "📩", "webhook": "🔗", "tally": "📋", "typeform": "📝",
-    "calendly": "📅", "bulk_paste": "📂", "csv": "📂", "manual": "✍️",
-    "inbound": "📥", "outbound": "📣", "event": "🎤", "referral": "🤝"
-}
 
 FIT_RULES = {
-    "title": {
-        "ceo": 15, "founder": 15, "coo": 12, "cmo": 12,
-        "sales": 10, "marketing": 8, "head": 8, "manager": 5,
-        "assistant": 0, "intern": -10
-    },
-    "company_size": [
-        (1, 10, -10), (11, 49, 5), (50, 199, 15),
-        (200, 999, 10), (1000, 1000000, 0)
-    ],
-    "intent_keywords": {
-        "demo": 20, "pricing": 15, "budget": 15, "urgent": 15,
-        "next week": 15, "follow up": 10, "contact": 8, "schedule": 12,
-        "compare": 10, "trial": 18, "proposal": 12, "decision": 12,
-        "implement": 10, "book": 12, "call": 8, "quote": 12,
-        "buy": 15, "need now": 18
-    },
-    "negative_keywords": {
-        "just curious": -10, "not now": -15, "maybe later": -10,
-        "no budget": -20, "student": -20, "spam": -30,
-        "research": -5, "vendor list": -10
-    }
+    "title": {"ceo": 15, "founder": 15, "coo": 12, "cmo": 12, "sales": 10, "marketing": 8, "head": 8, "manager": 5, "assistant": 0, "intern": -10},
+    "company_size": [(1, 10, -10), (11, 49, 5), (50, 199, 15), (200, 999, 10), (1000, 1000000, 0)],
+    "intent_keywords": {"demo": 20, "pricing": 15, "budget": 15, "urgent": 15, "next week": 15, "follow up": 10, "contact": 8, "schedule": 12, "compare": 10, "trial": 18, "proposal": 12, "decision": 12, "implement": 10, "book": 12, "call": 8, "quote": 12, "buy": 15, "need now": 18},
+    "negative_keywords": {"just curious": -10, "not now": -15, "maybe later": -10, "no budget": -20, "student": -20, "spam": -30, "research": -5, "vendor list": -10}
 }
 
 WORKFLOW_RULES = {
@@ -62,9 +40,9 @@ EMAIL_TEMPLATES = {
 }
 
 SLACK_TEMPLATES = {
-    "Hot": "🔥 *HOT LEAD* — {company_name} ({contact_name}) | Score: {score}/100 | {email} | Sofort anrufen!",
-    "Warm": "🌤️ *WARM LEAD* — {company_name} ({contact_name}) | Score: {score}/100 | {email} | Follow-up.",
-    "Cold": "❄️ *Cold Lead* — {company_name} | Score: {score}/100 | Nurture."
+    "Hot": "🔥 HOT LEAD — {company_name} ({contact_name}) | Score: {score}/100 | {email}",
+    "Warm": "🌤️ WARM LEAD — {company_name} ({contact_name}) | Score: {score}/100 | {email}",
+    "Cold": "❄️ Cold Lead — {company_name} | Score: {score}/100"
 }
 
 def get_connection():
@@ -80,40 +58,17 @@ def ensure_column(cur, table, col, col_type):
 def init_db():
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("""CREATE TABLE IF NOT EXISTS leads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lead_text TEXT, company_name TEXT, contact_name TEXT,
-            email TEXT, website TEXT, source TEXT, raw_payload TEXT,
-            unique_key TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )""")
-        cur.execute("""CREATE TABLE IF NOT EXISTS analyses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lead_id INTEGER, score INTEGER, tier TEXT,
-            fit_score INTEGER, intent_score INTEGER,
-            reason TEXT, next_step TEXT, analysis TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )""")
-        cur.execute("""CREATE TABLE IF NOT EXISTS activities (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lead_id INTEGER, activity_type TEXT,
-            payload TEXT, status TEXT DEFAULT 'queued',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )""")
-        cur.execute("""CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY, value TEXT
-        )""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS leads (id INTEGER PRIMARY KEY AUTOINCREMENT, lead_text TEXT, company_name TEXT, contact_name TEXT, email TEXT, website TEXT, source TEXT, raw_payload TEXT, unique_key TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS analyses (id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER, score INTEGER, tier TEXT, fit_score INTEGER, intent_score INTEGER, reason TEXT, next_step TEXT, analysis TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS activities (id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER, activity_type TEXT, payload TEXT, status TEXT DEFAULT 'queued', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)""")
         for col in ["source", "raw_payload", "updated_at", "unique_key"]:
             ensure_column(cur, "leads", col, "TEXT")
         conn.commit()
 
 def upsert_setting(key, value):
     with get_connection() as conn:
-        conn.execute(
-            "INSERT INTO settings(key,value) VALUES(?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (key, value)
-        )
+        conn.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
         conn.commit()
 
 def get_setting(key, default=""):
@@ -138,16 +93,10 @@ def upsert_lead(data):
         cur.execute("SELECT id FROM leads WHERE unique_key=?", (d["unique_key"],))
         row = cur.fetchone()
         if row:
-            cur.execute(
-                """UPDATE leads SET lead_text=?,company_name=?,contact_name=?,email=?,website=?,source=?,raw_payload=?,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
-                (d["lead_text"], d["company_name"], d["contact_name"], d["email"], d["website"], d["source"], d["raw_payload"], row["id"])
-            )
+            cur.execute("UPDATE leads SET lead_text=?,company_name=?,contact_name=?,email=?,website=?,source=?,raw_payload=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (d["lead_text"], d["company_name"], d["contact_name"], d["email"], d["website"], d["source"], d["raw_payload"], row["id"]))
             conn.commit()
             return row["id"], True
-        cur.execute(
-            """INSERT INTO leads(lead_text,company_name,contact_name,email,website,source,raw_payload,unique_key) VALUES(?,?,?,?,?,?,?,?)""",
-            (d["lead_text"], d["company_name"], d["contact_name"], d["email"], d["website"], d["source"], d["raw_payload"], d["unique_key"])
-        )
+        cur.execute("INSERT INTO leads(lead_text,company_name,contact_name,email,website,source,raw_payload,unique_key) VALUES(?,?,?,?,?,?,?,?)", (d["lead_text"], d["company_name"], d["contact_name"], d["email"], d["website"], d["source"], d["raw_payload"], d["unique_key"]))
         conn.commit()
         return cur.lastrowid, False
 
@@ -182,264 +131,20 @@ def save_analysis(lead_id, score, tier, fit_score, intent_score, reason, next_st
     if isinstance(analysis, (dict, list)):
         analysis = json.dumps(analysis, ensure_ascii=False)
     with get_connection() as conn:
-        conn.execute(
-            """INSERT INTO analyses(lead_id,score,tier,fit_score,intent_score,reason,next_step,analysis) VALUES(?,?,?,?,?,?,?,?)""",
-            (lead_id, score, tier, fit_score, intent_score, reason, next_step, analysis)
-        )
+        conn.execute("INSERT INTO analyses(lead_id,score,tier,fit_score,intent_score,reason,next_step,analysis) VALUES(?,?,?,?,?,?,?,?)", (lead_id, score, tier, fit_score, intent_score, reason, next_step, analysis))
         conn.commit()
 
 def log_activity(lead_id, activity_type, payload, status="done"):
     with get_connection() as conn:
-        conn.execute(
-            "INSERT INTO activities(lead_id,activity_type,payload,status) VALUES(?,?,?,?)",
-            (lead_id, activity_type, json.dumps(payload, ensure_ascii=False), status)
-        )
+        conn.execute("INSERT INTO activities(lead_id,activity_type,payload,status) VALUES(?,?,?,?)", (lead_id, activity_type, json.dumps(payload, ensure_ascii=False), status))
         conn.commit()
 
 def get_lead_table():
-    leads = get_leads()
     rows = []
-    for lead in leads:
+    for lead in get_leads():
         latest_rows = get_analyses_for_lead(lead["id"])
         latest = latest_rows[0] if latest_rows else None
-        rows.append({
-            "id": lead["id"],
-            "tier": latest["tier"] if latest else "—",
-            "score": latest["score"] if latest else None,
-            "company": lead["company_name"] or "—",
-            "contact": lead["contact_name"] or "—",
-            "email": lead["email"] or "—",
-            "website": lead["website"] or "—",
-            "source": lead["source"] or "—",
-            "next_step": latest["next_step"] if latest else "—",
-            "lead_text": lead["lead_text"] or "—",
-            "reason": latest["reason"] if latest else "—",
-            "analysis": latest["analysis"] if latest else "—",
-            "created_at": lead["created_at"],
-            "updated_at": lead["updated_at"],
-        })
-    return pd.DataFrame(rows)
-
-import streamlit as st
-import sqlite3
-import json
-import requests
-import pandas as pd
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from pathlib import Path
-from datetime import datetime, timedelta
-
-from follow_up.logic import init_followup_tables, create_followup_from_lead, run_due_sequences, get_active_sequences
-
-DB_PATH = Path("scopeos.db")
-OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-MODEL = "llama3.2"
-SEED = 42
-TEMPERATURE = 0
-
-TIER_EMOJI = {"Hot": "ðŸ”¥", "Warm": "ðŸŒ¤ï¸", "Cold": "â„ï¸"}
-TIER_COLOR = {"Hot": "#ff5d5d", "Warm": "#ffb347", "Cold": "#5b8def"}
-SOURCE_ICON = {
-    "gmail": "ðŸ“©", "webhook": "ðŸ”—", "tally": "ðŸ“‹", "typeform": "ðŸ“",
-    "calendly": "ðŸ“…", "bulk_paste": "ðŸ“‚", "csv": "ðŸ“‚", "manual": "âœï¸",
-    "inbound": "ðŸ“¥", "outbound": "ðŸ“£", "event": "ðŸŽ¤", "referral": "ðŸ¤"
-}
-
-FIT_RULES = {
-    "title": {
-        "ceo": 15, "founder": 15, "coo": 12, "cmo": 12,
-        "sales": 10, "marketing": 8, "head": 8, "manager": 5,
-        "assistant": 0, "intern": -10
-    },
-    "company_size": [
-        (1, 10, -10), (11, 49, 5), (50, 199, 15),
-        (200, 999, 10), (1000, 1000000, 0)
-    ],
-    "intent_keywords": {
-        "demo": 20, "pricing": 15, "budget": 15, "urgent": 15,
-        "next week": 15, "follow up": 10, "contact": 8, "schedule": 12,
-        "compare": 10, "trial": 18, "proposal": 12, "decision": 12,
-        "implement": 10, "book": 12, "call": 8, "quote": 12,
-        "buy": 15, "need now": 18
-    },
-    "negative_keywords": {
-        "just curious": -10, "not now": -15, "maybe later": -10,
-        "no budget": -20, "student": -20, "spam": -30,
-        "research": -5, "vendor list": -10
-    }
-}
-
-WORKFLOW_RULES = {
-    "Hot": {"owner": "sales", "action": "call_now", "sequence": "hot_sequence"},
-    "Warm": {"owner": "sdr", "action": "follow_up", "sequence": "warm_sequence"},
-    "Cold": {"owner": "nurture", "action": "nurture", "sequence": "cold_sequence"}
-}
-
-EMAIL_TEMPLATES = {
-    "Hot": "Hallo {contact_name},\n\nwir haben Ihre Anfrage erhalten und mÃ¶chten Sie umgehend kontaktieren.\nUnser Team meldet sich innerhalb von 2 Stunden.\n\nViele GrÃ¼ÃŸe,\nScopeOS Team",
-    "Warm": "Hallo {contact_name},\n\nvielen Dank fÃ¼r Ihr Interesse. Darf ich kurz nachhaken?\n\nViele GrÃ¼ÃŸe,\nScopeOS Team",
-    "Cold": "Hallo {contact_name},\n\ndanke fÃ¼r Ihr Interesse. Wir melden uns bei relevanten Updates.\n\nViele GrÃ¼ÃŸe,\nScopeOS Team"
-}
-
-SLACK_TEMPLATES = {
-    "Hot": "ðŸ”¥ *HOT LEAD* â€” {company_name} ({contact_name}) | Score: {score}/100 | {email} | Sofort anrufen!",
-    "Warm": "ðŸŒ¤ï¸ *WARM LEAD* â€” {company_name} ({contact_name}) | Score: {score}/100 | {email} | Follow-up.",
-    "Cold": "â„ï¸ *Cold Lead* â€” {company_name} | Score: {score}/100 | Nurture."
-}
-
-def get_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def ensure_column(cur, table, col, col_type):
-    cur.execute(f"PRAGMA table_info({table})")
-    if col not in [r[1] for r in cur.fetchall()]:
-        cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
-
-def init_db():
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute("""CREATE TABLE IF NOT EXISTS leads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lead_text TEXT, company_name TEXT, contact_name TEXT,
-            email TEXT, website TEXT, source TEXT, raw_payload TEXT,
-            unique_key TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )""")
-        cur.execute("""CREATE TABLE IF NOT EXISTS analyses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lead_id INTEGER, score INTEGER, tier TEXT,
-            fit_score INTEGER, intent_score INTEGER,
-            reason TEXT, next_step TEXT, analysis TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )""")
-        cur.execute("""CREATE TABLE IF NOT EXISTS activities (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            lead_id INTEGER, activity_type TEXT,
-            payload TEXT, status TEXT DEFAULT 'queued',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )""")
-        cur.execute("""CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY, value TEXT
-        )""")
-        for col in ["source", "raw_payload", "updated_at", "unique_key"]:
-            ensure_column(cur, "leads", col, "TEXT")
-        conn.commit()
-
-def upsert_setting(key, value):
-    with get_connection() as conn:
-        conn.execute(
-            "INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (key, value)
-        )
-        conn.commit()
-
-def get_setting(key, default=""):
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT value FROM settings WHERE key=?", (key,))
-        row = cur.fetchone()
-        return row["value"] if row else default
-
-def normalize(text):
-    return " ".join((text or "").lower().strip().split())
-
-def make_unique_key(d):
-    return "|".join([normalize(d.get(k, "")) for k in ["lead_text", "company_name", "contact_name", "email", "website"]])[:500]
-
-def upsert_lead(data):
-    init_db()
-    d = {k: (data.get(k) or "").strip() for k in ["lead_text", "company_name", "contact_name", "email", "website", "source", "raw_payload"]}
-    d["unique_key"] = make_unique_key(d)
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM leads WHERE unique_key=?", (d["unique_key"],))
-        row = cur.fetchone()
-        if row:
-            cur.execute(
-                """UPDATE leads SET lead_text=?,company_name=?,contact_name=?,email=?,website=?,source=?,raw_payload=?,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
-                (d["lead_text"], d["company_name"], d["contact_name"], d["email"], d["website"], d["source"], d["raw_payload"], row["id"])
-            )
-            conn.commit()
-            return row["id"], True
-        cur.execute(
-            """INSERT INTO leads(lead_text,company_name,contact_name,email,website,source,raw_payload,unique_key) VALUES(?,?,?,?,?,?,?,?)""",
-            (d["lead_text"], d["company_name"], d["contact_name"], d["email"], d["website"], d["source"], d["raw_payload"], d["unique_key"])
-        )
-        conn.commit()
-        return cur.lastrowid, False
-
-def bulk_upsert(df, source="bulk"):
-    results = []
-    for _, row in df.iterrows():
-        lead_id, dup = upsert_lead({
-            "lead_text": row.get("lead_text", ""),
-            "company_name": row.get("company_name", ""),
-            "contact_name": row.get("contact_name", ""),
-            "email": row.get("email", ""),
-            "website": row.get("website", ""),
-            "source": source,
-            "raw_payload": json.dumps(row.to_dict(), ensure_ascii=False)
-        })
-        results.append((lead_id, dup))
-    return results
-
-def get_leads():
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM leads ORDER BY id DESC")
-        return cur.fetchall()
-
-def get_analyses_for_lead(lead_id):
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM analyses WHERE lead_id=? ORDER BY id DESC", (lead_id,))
-        return cur.fetchall()
-
-def save_analysis(lead_id, score, tier, fit_score, intent_score, reason, next_step, analysis):
-    if isinstance(analysis, (dict, list)):
-        analysis = json.dumps(analysis, ensure_ascii=False)
-    with get_connection() as conn:
-        conn.execute(
-            """INSERT INTO analyses(lead_id,score,tier,fit_score,intent_score,reason,next_step,analysis) VALUES(?,?,?,?,?,?,?,?)""",
-            (lead_id, score, tier, fit_score, intent_score, reason, next_step, analysis)
-        )
-        conn.commit()
-
-def log_activity(lead_id, activity_type, payload, status="done"):
-    with get_connection() as conn:
-        conn.execute(
-            "INSERT INTO activities(lead_id,activity_type,payload,status) VALUES(?,?,?,?)",
-            (lead_id, activity_type, json.dumps(payload, ensure_ascii=False), status)
-        )
-        conn.commit()
-
-def get_lead_table():
-    leads = get_leads()
-    rows = []
-    for lead in leads:
-        latest_rows = get_analyses_for_lead(lead["id"])
-        latest = latest_rows[0] if latest_rows else None
-        rows.append({
-            "id": lead["id"],
-            "tier": latest["tier"] if latest else "â€”",
-            "score": latest["score"] if latest else None,
-            "company": lead["company_name"] or "â€”",
-            "contact": lead["contact_name"] or "â€”",
-            "email": lead["email"] or "â€”",
-            "website": lead["website"] or "â€”",
-            "source": lead["source"] or "â€”",
-            "next_step": latest["next_step"] if latest else "â€”",
-            "lead_text": lead["lead_text"] or "â€”",
-            "reason": latest["reason"] if latest else "â€”",
-            "analysis": latest["analysis"] if latest else "â€”",
-            "created_at": lead["created_at"],
-            "updated_at": lead["updated_at"],
-        })
+        rows.append({"id": lead["id"], "tier": latest["tier"] if latest else "—", "score": latest["score"] if latest else None, "company": lead["company_name"] or "—", "contact": lead["contact_name"] or "—", "email": lead["email"] or "—", "website": lead["website"] or "—", "source": lead["source"] or "—", "next_step": latest["next_step"] if latest else "—", "lead_text": lead["lead_text"] or "—", "reason": latest["reason"] if latest else "—", "analysis": latest["analysis"] if latest else "—", "created_at": lead["created_at"], "updated_at": lead["updated_at"]})
     return pd.DataFrame(rows)
 
 def extract_company_size(text):
@@ -463,20 +168,13 @@ def enrich_lead(lead):
     employee_band = None
     if size:
         lo, hi = size
-        buckets = [(1,10,"startup"),(11,49,"small"),(50,199,"midmarket"),(200,999999,"enterprise")]
-        for a, b, label in buckets:
+        for a, b, label in [(1, 10, "startup"), (11, 49, "small"), (50, 199, "midmarket"), (200, 999999, "enterprise")]:
             if lo >= a and hi <= b:
                 employee_band = label
                 break
-    keywords = ["saas","agency","consulting","software","marketplace","ai","fintech","health","ecommerce"]
-    industry = next((kw for kw in keywords if kw in text), None)
+    industry = next((kw for kw in ["saas", "agency", "consulting", "software", "marketplace", "ai", "fintech", "health", "ecommerce"] if kw in text), None)
     domain = (lead["website"] or "").replace("https://", "").replace("http://", "").split("/")[0].lower()
-    return {
-        "domain": domain or "â€”",
-        "industry": industry or "unbekannt",
-        "employee_band": employee_band or "unbekannt",
-        "enriched_at": datetime.utcnow().isoformat(timespec="seconds")
-    }
+    return {"domain": domain or "—", "industry": industry or "unbekannt", "employee_band": employee_band or "unbekannt", "enriched_at": datetime.utcnow().isoformat(timespec="seconds")}
 
 def score_lead(lead):
     text = f"{lead['lead_text'] or ''} {lead['company_name'] or ''} {lead['contact_name'] or ''} {lead['email'] or ''} {lead['website'] or ''}".lower()
@@ -509,16 +207,8 @@ def score_lead(lead):
     return score, tier, fit, intent, reason, next_step
 
 def llm_explain(lead, score, tier, fit_score, intent_score, reason, next_step):
-    prompt = (
-        f"Du bist ein Sales Ops Assistent. ErklÃ¤re kurz warum dieser Lead den Score {score}/100 hat. "
-        f"Tier={tier}, Fit={fit_score}, Intent={intent_score}. NÃ¤chster Schritt: {next_step}. "
-        f"Lead: Firma={lead['company_name']}, Kontakt={lead['contact_name']}, Text={lead['lead_text']}"
-    )
-    r = requests.post(
-        OLLAMA_URL,
-        json={"model": MODEL, "prompt": prompt, "stream": False, "options": {"temperature": TEMPERATURE, "seed": SEED}},
-        timeout=120
-    )
+    prompt = f"Du bist ein Sales Ops Assistent. Erkläre kurz warum dieser Lead den Score {score}/100 hat. Tier={tier}, Fit={fit_score}, Intent={intent_score}. Nächster Schritt: {next_step}. Lead: Firma={lead['company_name']}, Kontakt={lead['contact_name']}, Text={lead['lead_text']}"
+    r = requests.post(OLLAMA_URL, json={"model": MODEL, "prompt": prompt, "stream": False, "options": {"temperature": TEMPERATURE, "seed": SEED}}, timeout=120)
     r.raise_for_status()
     return r.json().get("response", "")
 
@@ -526,12 +216,7 @@ def send_slack(lead, score, tier):
     url = get_setting("slack_url")
     if not url:
         return False, "Keine Slack URL"
-    msg = SLACK_TEMPLATES.get(tier, SLACK_TEMPLATES["Cold"]).format(
-        company_name=lead["company_name"] or "â€”",
-        contact_name=lead["contact_name"] or "â€”",
-        email=lead["email"] or "â€”",
-        score=score
-    )
+    msg = SLACK_TEMPLATES.get(tier, SLACK_TEMPLATES["Cold"]).format(company_name=lead["company_name"] or "—", contact_name=lead["contact_name"] or "—", email=lead["email"] or "—", score=score)
     try:
         r = requests.post(url, json={"text": msg}, timeout=10)
         r.raise_for_status()
@@ -543,16 +228,7 @@ def send_to_crm(lead, score, tier, enrichment):
     url = get_setting("crm_url")
     if not url:
         return False, "Keine CRM URL"
-    payload = {
-        "lead_id": lead["id"],
-        "company_name": lead["company_name"],
-        "contact_name": lead["contact_name"],
-        "email": lead["email"],
-        "website": lead["website"],
-        "score": score,
-        "tier": tier,
-        "enrichment": enrichment
-    }
+    payload = {"lead_id": lead["id"], "company_name": lead["company_name"], "contact_name": lead["contact_name"], "email": lead["email"], "website": lead["website"], "score": score, "tier": tier, "enrichment": enrichment}
     try:
         r = requests.post(url, json=payload, timeout=10)
         r.raise_for_status()
@@ -586,15 +262,7 @@ def send_email_notification(lead, score, tier):
 def run_workflow(lead, score, tier):
     enrichment = enrich_lead(lead)
     wf = WORKFLOW_RULES[tier]
-    results = {
-        "tier": tier,
-        "score": score,
-        "workflow": wf,
-        "enrichment": enrichment,
-        "slack": "skipped",
-        "crm": "skipped",
-        "email": "skipped"
-    }
+    results = {"tier": tier, "score": score, "workflow": wf, "enrichment": enrichment, "slack": "skipped", "crm": "skipped", "email": "skipped"}
     if get_setting("slack_enabled", "true") == "true":
         ok, msg = send_slack(lead, score, tier)
         results["slack"] = "ok" if ok else f"error: {msg}"
@@ -640,25 +308,14 @@ def parse_bulk_text(text):
         if not line:
             continue
         parts = [p.strip() for p in line.split("|")] + [""] * 5
-        rows.append({
-            "lead_text": parts[0], "company_name": parts[1],
-            "contact_name": parts[2], "email": parts[3], "website": parts[4]
-        })
+        rows.append({"lead_text": parts[0], "company_name": parts[1], "contact_name": parts[2], "email": parts[3], "website": parts[4]})
     return pd.DataFrame(rows)
 
 def simulate_webhook(payload_text):
     try:
         data = json.loads(payload_text)
         if isinstance(data, dict):
-            return upsert_lead({
-                "lead_text": data.get("lead_text", ""),
-                "company_name": data.get("company_name", ""),
-                "contact_name": data.get("contact_name", ""),
-                "email": data.get("email", ""),
-                "website": data.get("website", ""),
-                "source": data.get("source", "webhook"),
-                "raw_payload": payload_text
-            })
+            return upsert_lead({"lead_text": data.get("lead_text", ""), "company_name": data.get("company_name", ""), "contact_name": data.get("contact_name", ""), "email": data.get("email", ""), "website": data.get("website", ""), "source": data.get("source", "webhook"), "raw_payload": payload_text})
     except Exception:
         pass
     return None, False
@@ -688,147 +345,67 @@ def check_ollama():
 
 def freshness_hint(created_at):
     if pd.isna(created_at):
-        return "â€”"
+        return "—"
     delta = datetime.now() - created_at.to_pydatetime()
     mins = int(delta.total_seconds() // 60)
     if mins < 60:
         return f"vor {mins}m"
-    hours = mins // 60
-    return f"vor {hours}h"
+    return f"vor {mins//60}h"
 
 def card(title, value, subtitle="", color="#ffffff"):
-    st.markdown(
-        f"""
-        <div style="
-            background: linear-gradient(180deg, rgba(26,26,26,0.98), rgba(18,18,18,0.98));
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 18px;
-            padding: 18px 18px 14px 18px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.18);
-        ">
-            <div style="font-size: 0.82rem; color: #9aa4b2; margin-bottom: 6px;">{title}</div>
-            <div style="font-size: 1.85rem; font-weight: 800; color: {color}; line-height: 1.1;">{value}</div>
-            <div style="font-size: 0.78rem; color: #7b8794; margin-top: 8px;">{subtitle}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    st.markdown(f"""<div style="background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 16px 16px 12px 16px;"><div style="font-size: 0.82rem; color: #9aa4b2; margin-bottom: 6px;">{title}</div><div style="font-size: 1.75rem; font-weight: 800; color: {color}; line-height: 1.1;">{value}</div><div style="font-size: 0.78rem; color: #7b8794; margin-top: 8px;">{subtitle}</div></div>""", unsafe_allow_html=True)
 
 def lead_row(row):
     score_val = row["score"]
     color_s = "#ff5d5d" if score_val is not None and score_val >= 70 else "#ffb347" if score_val is not None and score_val >= 40 else "#5b8def"
     with st.container():
-        st.markdown(
-            """
-            <div style="
-                background: rgba(255,255,255,0.03);
-                border: 1px solid rgba(255,255,255,0.07);
-                border-radius: 16px;
-                padding: 16px 16px 10px 16px;
-                margin-bottom: 12px;
-            ">
-            """,
-            unsafe_allow_html=True
-        )
+        st.markdown("<div style='background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: 16px 16px 10px 16px; margin-bottom: 12px;'>", unsafe_allow_html=True)
         c1, c2, c3, c4, c5 = st.columns([2.7, 2.0, 2.0, 1.2, 1.3])
         with c1:
             st.markdown(f"**{row['company']}**")
-            st.caption(f"ðŸ‘¤ {row['contact']} Â· {row['source']}")
+            st.caption(f"👤 {row['contact']} · {row['source']}")
         with c2:
-            if row["email"] and row["email"] != "â€”":
-                st.markdown(f"ðŸ“§ [{row['email']}](mailto:{row['email']})")
+            if row["email"] and row["email"] != "—":
+                st.markdown(f"📧 [{row['email']}](mailto:{row['email']})")
             else:
-                st.caption("ðŸ“§ kein E-Mail-Wert")
+                st.caption("📧 kein E-Mail-Wert")
         with c3:
-            if row["website"] and row["website"] != "â€”":
+            if row["website"] and row["website"] != "—":
                 url = row["website"] if str(row["website"]).startswith("http") else f"https://{row['website']}"
-                st.markdown(f"ðŸŒ [{row['website']}]({url})")
+                st.markdown(f"🌐 [{row['website']}]({url})")
             else:
-                st.caption("ðŸŒ keine Website")
+                st.caption("🌐 keine Website")
         with c4:
-            st.markdown(
-                f"<div style='text-align:center'><div style='font-size:1.4rem;font-weight:800;color:{color_s}'>{score_val if score_val is not None else 'â€”'}</div><div style='font-size:0.72rem;color:#8d98a6;'>/100</div></div>",
-                unsafe_allow_html=True
-            )
+            st.markdown(f"<div style='text-align:center'><div style='font-size:1.45rem;font-weight:800;color:{color_s}'>{score_val if score_val is not None else '—'}</div><div style='font-size:0.72rem;color:#8d98a6;'>/100</div></div>", unsafe_allow_html=True)
         with c5:
             st.caption(f"{TIER_EMOJI.get(row['tier'], '')} {row['tier']}")
-            st.caption(f"ðŸ•’ {freshness_hint(row['created_at'])}")
-        st.caption(f"â†³ {row['next_step']}")
+            st.caption(f"🕒 {freshness_hint(row['created_at'])}")
+        st.caption(f"↳ {row['next_step']}")
         st.markdown("</div>", unsafe_allow_html=True)
 
 def main():
     init_db()
     init_followup_tables()
-
-    st.set_page_config(
-        page_title="ScopeOS",
-        page_icon="ðŸŽ¯",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-
-    st.markdown(
-        """
-        <style>
-        html, body, [class*="css"]  {
-            font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        }
-        .stApp {
-            background:
-                radial-gradient(circle at top left, rgba(91,141,239,0.12), transparent 25%),
-                radial-gradient(circle at top right, rgba(255,93,93,0.08), transparent 22%),
-                linear-gradient(180deg, #0b0f14 0%, #0f141b 100%);
-            color: #e5ecf3;
-        }
-        section[data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #0c1117, #0b0f14);
-            border-right: 1px solid rgba(255,255,255,0.07);
-        }
-        .block-container {
-            padding-top: 1.2rem;
-            padding-bottom: 2rem;
-        }
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 8px;
-        }
-        .stTabs [data-baseweb="tab"] {
-            background: rgba(255,255,255,0.03);
-            border-radius: 12px 12px 0 0;
-            padding: 10px 14px;
-        }
-        .stTabs [aria-selected="true"] {
-            background: rgba(255,255,255,0.08) !important;
-        }
-        div[data-testid="metric-container"] {
-            background: rgba(255,255,255,0.03);
-            border: 1px solid rgba(255,255,255,0.08);
-            padding: 14px 12px;
-            border-radius: 16px;
-        }
-        .lead-hot { border-left: 4px solid #ff5d5d; }
-        .lead-warm { border-left: 4px solid #ffb347; }
-        .lead-cold { border-left: 4px solid #5b8def; }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+    st.set_page_config(page_title="ScopeOS", page_icon="🎯", layout="wide", initial_sidebar_state="expanded")
+    st.markdown("""<style>
+    html, body, [class*='css'] { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .stApp { background: linear-gradient(180deg, #0b0f14 0%, #0f141b 100%); color: #e5ecf3; }
+    section[data-testid='stSidebar'] { background: #0c1117; border-right: 1px solid rgba(255,255,255,0.07); }
+    .block-container { padding-top: 1.1rem; padding-bottom: 2rem; }
+    .stTabs [data-baseweb='tab'] { background: rgba(255,255,255,0.03); border-radius: 12px 12px 0 0; padding: 10px 14px; }
+    .stTabs [aria-selected='true'] { background: rgba(255,255,255,0.08) !important; }
+    </style>""", unsafe_allow_html=True)
 
     with st.sidebar:
-        st.markdown("## ðŸŽ¯ ScopeOS")
+        st.markdown("## ScopeOS")
         st.caption("B2B Lead Automation OS")
         st.divider()
-
-        if check_ollama():
-            st.success("ðŸŸ¢ Ollama lÃ¤uft")
-        else:
-            st.error("ðŸ”´ Ollama offline")
-
-        st.markdown("### ðŸ”Œ Integrationen")
+        st.success("Ollama läuft") if check_ollama() else st.error("Ollama offline")
+        st.markdown("### Integrationen")
         slack_enabled = st.toggle("Slack", value=get_setting("slack_enabled", "true") == "true")
         crm_enabled = st.toggle("CRM", value=get_setting("crm_enabled", "true") == "true")
         email_enabled = st.toggle("E-Mail", value=get_setting("email_enabled", "true") == "true")
-
-        with st.expander("âš™ï¸ Verbindungen konfigurieren"):
+        with st.expander("Verbindungen konfigurieren"):
             slack_url = st.text_input("Slack Webhook URL", value=get_setting("slack_url", ""), type="password")
             crm_url = st.text_input("CRM Endpoint", value=get_setting("crm_url", ""), type="password")
             smtp_host = st.text_input("SMTP Host", value=get_setting("smtp_host", ""))
@@ -836,8 +413,7 @@ def main():
             smtp_user = st.text_input("SMTP User", value=get_setting("smtp_user", ""))
             smtp_pass = st.text_input("SMTP Passwort", value=get_setting("smtp_pass", ""), type="password")
             notify_email = st.text_input("Notify E-Mail", value=get_setting("notify_email", ""))
-
-            if st.button("ðŸ’¾ Einstellungen speichern", use_container_width=True):
+            if st.button("Einstellungen speichern", use_container_width=True):
                 upsert_setting("slack_url", slack_url)
                 upsert_setting("crm_url", crm_url)
                 upsert_setting("smtp_host", smtp_host)
@@ -848,46 +424,30 @@ def main():
                 upsert_setting("slack_enabled", str(slack_enabled).lower())
                 upsert_setting("crm_enabled", str(crm_enabled).lower())
                 upsert_setting("email_enabled", str(email_enabled).lower())
-                st.success("âœ… Gespeichert")
-
-        st.divider()
-        st.markdown("### ðŸŒ Webhooks")
-        st.caption("Diese Endpoints kannst du an Tally, Typeform, Calendly oder Make anbinden.")
-        st.code("POST /webhook/tally", language=None)
-        st.code("POST /webhook/generic", language=None)
-        st.code("POST /webhook/lead", language=None)
+                st.success("Gespeichert")
 
     leads_count, analyses_count, activities_count, tier_counts, today_count, week_count = get_stats()
-
-    st.markdown("# ðŸŽ¯ ScopeOS")
-    st.caption("Automation-first B2B Lead OS â€” sauber, schnell, strukturiert")
+    st.markdown("# ScopeOS")
+    st.caption("Automation-first B2B Lead OS")
     st.divider()
 
-    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
-    with m1:
-        card("Leads gesamt", leads_count, "Gespeicherte Leads", "#f3f7ff")
-    with m2:
-        card("Hot", tier_counts.get("Hot", 0), "Priorisierte Leads", TIER_COLOR["Hot"])
-    with m3:
-        card("Warm", tier_counts.get("Warm", 0), "Mittlere PrioritÃ¤t", TIER_COLOR["Warm"])
-    with m4:
-        card("Cold", tier_counts.get("Cold", 0), "Nurture-Kandidaten", TIER_COLOR["Cold"])
-    with m5:
-        card("Heute", today_count, "Neue Leads heute", "#cbe7ff")
-    with m6:
-        card("7 Tage", week_count, "Neue Leads diese Woche", "#cbe7ff")
-    with m7:
-        card("Aktionen", activities_count, "Automations-Events", "#ffffff")
+    cols = st.columns(7)
+    stats = [
+        ("Leads gesamt", leads_count, "Gespeicherte Leads", "#f3f7ff"),
+        ("Hot", tier_counts.get("Hot", 0), "Priorisierte Leads", TIER_COLOR["Hot"]),
+        ("Warm", tier_counts.get("Warm", 0), "Mittlere Priorität", TIER_COLOR["Warm"]),
+        ("Cold", tier_counts.get("Cold", 0), "Nurture-Kandidaten", TIER_COLOR["Cold"]),
+        ("Heute", today_count, "Neue Leads heute", "#cbe7ff"),
+        ("7 Tage", week_count, "Neue Leads diese Woche", "#cbe7ff"),
+        ("Aktionen", activities_count, "Automations-Events", "#ffffff"),
+    ]
+    for c, s in zip(cols, stats):
+        with c:
+            card(*s)
 
     st.divider()
-
     tab_pipeline, tab_leads_add, tab_analyse, tab_followup, tab_quellen, tab_log = st.tabs([
-        "ðŸ“Š Pipeline",
-        "âž• Leads hinzufÃ¼gen",
-        "âš¡ Analyse & Automationen",
-        "ðŸ” Follow-up",
-        "ðŸ”— Quellen & Webhooks",
-        "ðŸ“‹ AktivitÃ¤ten-Log"
+        "Pipeline", "Leads hinzufügen", "Analyse & Automationen", "Follow-up", "Quellen & Webhooks", "Aktivitäten-Log"
     ])
 
     with tab_pipeline:
@@ -895,42 +455,35 @@ def main():
         if df_all.empty:
             st.info("Noch keine Leads vorhanden.")
         else:
-            f1, f2, f3, f4 = st.columns([2,2,2,2])
+            f1, f2, f3, f4 = st.columns([2, 2, 2, 2])
             with f1:
                 tier_filter = st.multiselect("Tier", ["Hot", "Warm", "Cold"], default=["Hot", "Warm", "Cold"])
             with f2:
                 source_opts = ["Alle"] + sorted(df_all["source"].dropna().astype(str).unique().tolist())
                 source_filter = st.selectbox("Quelle", source_opts, index=0)
             with f3:
-                search_term = st.text_input("ðŸ”Ž Suche", placeholder="Firma, Kontakt oder E-Mail...")
+                search_term = st.text_input("Suche", placeholder="Firma, Kontakt oder E-Mail...")
             with f4:
                 sort_by = st.selectbox("Sortieren nach", ["most recent", "score", "tier", "company"], index=0)
-
-            t1, t2 = st.columns([2, 6])
+            t1, _ = st.columns([2, 6])
             with t1:
                 time_filter = st.selectbox("Zeitraum", ["Alle Zeit", "Heute", "Letzte 7 Tage", "Letzte 30 Tage"], index=0)
 
             df_view = df_all.copy()
             df_view["created_at"] = pd.to_datetime(df_view["created_at"], errors="coerce")
-
             if tier_filter:
                 df_view = df_view[df_view["tier"].isin(tier_filter)]
             if source_filter != "Alle":
                 df_view = df_view[df_view["source"] == source_filter]
             if search_term:
                 t = search_term.lower()
-                df_view = df_view[df_view.apply(
-                    lambda r: t in str(r["company"]).lower() or t in str(r["contact"]).lower() or t in str(r["email"]).lower(),
-                    axis=1
-                )]
-
+                df_view = df_view[df_view.apply(lambda r: t in str(r["company"]).lower() or t in str(r["contact"]).lower() or t in str(r["email"]).lower(), axis=1)]
             if time_filter == "Heute":
                 df_view = df_view[df_view["created_at"] >= datetime.now() - timedelta(days=1)]
             elif time_filter == "Letzte 7 Tage":
                 df_view = df_view[df_view["created_at"] >= datetime.now() - timedelta(days=7)]
             elif time_filter == "Letzte 30 Tage":
                 df_view = df_view[df_view["created_at"] >= datetime.now() - timedelta(days=30)]
-
             if sort_by == "most recent":
                 df_view = df_view.sort_values("created_at", ascending=False, na_position="last")
             elif sort_by == "score":
@@ -940,10 +493,8 @@ def main():
             elif sort_by == "tier":
                 df_view["_tier_ord"] = df_view["tier"].map({"Hot": 1, "Warm": 2, "Cold": 3}).fillna(99)
                 df_view = df_view.sort_values(["_tier_ord", "created_at"], ascending=[True, False]).drop(columns=["_tier_ord"])
-
             st.caption(f"{len(df_view)} Leads gefunden")
             st.divider()
-
             for tier in ["Hot", "Warm", "Cold"]:
                 tier_df = df_view[df_view["tier"] == tier]
                 if tier_df.empty:
@@ -951,26 +502,14 @@ def main():
                 st.markdown(f"### {TIER_EMOJI[tier]} {tier} Leads ({len(tier_df)})")
                 for _, row in tier_df.iterrows():
                     lead_row(row)
-
-            st.markdown("### â¬‡ï¸ Export")
-            export_df = df_view[["id", "tier", "score", "company", "contact", "email", "website", "source", "next_step", "created_at", "updated_at"]].copy()
-            export_df.columns = ["ID", "Tier", "Score", "Firma", "Kontakt", "E-Mail", "Website", "Quelle", "NÃ¤chster Schritt", "Erstellt", "Aktualisiert"]
-            st.dataframe(export_df, use_container_width=True)
-            st.download_button(
-                "â¬‡ï¸ Pipeline als CSV exportieren",
-                df_view.to_csv(index=False).encode("utf-8"),
-                file_name=f"scopeos_pipeline_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv"
-            )
+            st.download_button("Pipeline als CSV exportieren", df_view.to_csv(index=False).encode("utf-8"), file_name=f"scopeos_pipeline_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", mime="text/csv")
 
     with tab_leads_add:
-        st.markdown("### Leads hinzufÃ¼gen")
-        sub1, sub2, sub3, sub4 = st.tabs(["âœï¸ Einzellead", "ðŸ“‹ Bulk Paste", "ðŸ“‚ CSV Import", "ðŸ“¡ Webhook Simulator"])
-
+        st.markdown("### Leads hinzufügen")
+        sub1, sub2, sub3, sub4 = st.tabs(["Einzellead", "Bulk Paste", "CSV Import", "Webhook Simulator"])
         with sub1:
             with st.form("single_lead"):
-                st.markdown("#### Neuen Lead manuell erfassen")
-                lead_text = st.text_area("Leadbeschreibung / Notiz", placeholder='z.B. "Hat Demo angefragt, Budget 50k, Entscheidung nÃ¤chste Woche"')
+                lead_text = st.text_area("Leadbeschreibung / Notiz")
                 c1, c2 = st.columns(2)
                 with c1:
                     company_name = st.text_input("Firmenname")
@@ -980,47 +519,35 @@ def main():
                     website = st.text_input("Website")
                 source = st.selectbox("Quelle", ["manual", "inbound", "outbound", "event", "referral", "webhook"])
                 auto_analyze = st.checkbox("Direkt analysieren", value=True)
-                submitted = st.form_submit_button("ðŸ’¾ Lead speichern", use_container_width=True)
-
+                submitted = st.form_submit_button("Lead speichern", use_container_width=True)
             if submitted:
                 if not lead_text.strip() and not company_name.strip():
                     st.warning("Bitte mindestens Leadtext oder Firmenname eingeben.")
                 else:
-                    lead_id, dup = upsert_lead({
-                        "lead_text": lead_text,
-                        "company_name": company_name,
-                        "contact_name": contact_name,
-                        "email": email,
-                        "website": website,
-                        "source": source,
-                        "raw_payload": "{}"
-                    })
-                    st.success(f"{'Aktualisiert' if dup else 'âœ… Gespeichert'}: Lead #{lead_id}")
+                    lead_id, dup = upsert_lead({"lead_text": lead_text, "company_name": company_name, "contact_name": contact_name, "email": email, "website": website, "source": source, "raw_payload": "{}"})
+                    st.success(f"{'Aktualisiert' if dup else 'Gespeichert'}: Lead #{lead_id}")
                     if auto_analyze:
                         with get_connection() as conn:
                             cur = conn.cursor()
                             cur.execute("SELECT * FROM leads WHERE id=?", (lead_id,))
                             lead = cur.fetchone()
-                        with st.spinner("KI-Analyse lÃ¤uft..."):
+                        with st.spinner("KI-Analyse läuft..."):
                             res = analyze_lead(lead, force=True, run_automations=True)
                         if res:
-                            score, tier = res
-                            st.info(f"{TIER_EMOJI.get(tier, '')} Score: {score}/100 â€” **{tier}**")
+                            st.info(f"{TIER_EMOJI.get(res[1], '')} Score: {res[0]}/100 — {res[1]}")
                     st.rerun()
 
         with sub2:
-            st.markdown("#### Mehrere Leads auf einmal einfÃ¼gen")
-            st.info("Format: `lead_text | company_name | contact_name | email | website`")
-            bulk_text = st.text_area("Leads einfÃ¼gen", height=220)
-            if st.button("ðŸ”„ Vorschau", use_container_width=True) and bulk_text.strip():
+            st.markdown("### Bulk Paste")
+            bulk_text = st.text_area("Leads einfügen", height=220)
+            if st.button("Vorschau", use_container_width=True) and bulk_text.strip():
                 st.session_state["bulk_df"] = parse_bulk_text(bulk_text)
             bulk_df = st.session_state.get("bulk_df", pd.DataFrame())
             if not bulk_df.empty:
-                st.caption(f"{len(bulk_df)} Leads erkannt")
                 edited = st.data_editor(bulk_df, num_rows="dynamic", use_container_width=True, key="bulk_ed")
                 c1, c2 = st.columns(2)
                 with c1:
-                    if st.button("ðŸ’¾ Nur speichern", use_container_width=True):
+                    if st.button("Nur speichern", use_container_width=True):
                         df = edited.fillna("")
                         df = df[df.apply(lambda r: any(str(v).strip() for v in r), axis=1)]
                         res = bulk_upsert(df, source="bulk_paste")
@@ -1028,7 +555,7 @@ def main():
                         st.session_state.pop("bulk_df", None)
                         st.rerun()
                 with c2:
-                    if st.button("ðŸš€ Speichern & Analysieren", use_container_width=True):
+                    if st.button("Speichern & Analysieren", use_container_width=True):
                         df = edited.fillna("")
                         df = df[df.apply(lambda r: any(str(v).strip() for v in r), axis=1)]
                         res = bulk_upsert(df, source="bulk_paste")
@@ -1039,11 +566,7 @@ def main():
                         st.rerun()
 
         with sub3:
-            st.markdown("#### CSV-Datei importieren")
-            c1, _ = st.columns([1, 4])
-            with c1:
-                tpl = pd.DataFrame(columns=["lead_text", "company_name", "contact_name", "email", "website"])
-                st.download_button("â¬‡ï¸ Vorlage", tpl.to_csv(index=False), file_name="scopeos_template.csv", mime="text/csv")
+            st.markdown("### CSV Import")
             uploaded = st.file_uploader("CSV hochladen", type=["csv"])
             if uploaded:
                 try:
@@ -1052,18 +575,17 @@ def main():
                         if col not in df.columns:
                             df[col] = ""
                     df = df[["lead_text", "company_name", "contact_name", "email", "website"]].fillna("")
-                    st.caption(f"{len(df)} Zeilen")
                     edited_csv = st.data_editor(df, num_rows="dynamic", use_container_width=True)
                     c1, c2 = st.columns(2)
                     with c1:
-                        if st.button("ðŸ’¾ Importieren", use_container_width=True):
+                        if st.button("Importieren", use_container_width=True):
                             res = bulk_upsert(edited_csv.fillna(""), source="csv")
                             st.success(f"{sum(1 for _, d in res if not d)} neu")
                             st.rerun()
                     with c2:
-                        if st.button("ðŸš€ Importieren & Analysieren", use_container_width=True):
+                        if st.button("Importieren & Analysieren", use_container_width=True):
                             bulk_upsert(edited_csv.fillna(""), source="csv")
-                            with st.spinner("LÃ¤uft..."):
+                            with st.spinner("Läuft..."):
                                 ares = analyze_all(skip_existing=True, run_automations=True)
                             st.success(f"{len(ares)} analysiert")
                             st.rerun()
@@ -1071,27 +593,19 @@ def main():
                     st.error(f"Fehler: {e}")
 
         with sub4:
-            st.markdown("#### Webhook-Payload simulieren")
-            default_payload = json.dumps({
-                "lead_text": "Demo angefragt, Budget vorhanden",
-                "company_name": "ACME GmbH",
-                "contact_name": "Max MÃ¼ller CEO",
-                "email": "max@acme.de",
-                "website": "acme.de",
-                "source": "webhook"
-            }, indent=2, ensure_ascii=False)
+            default_payload = json.dumps({"lead_text": "Demo angefragt, Budget vorhanden", "company_name": "ACME GmbH", "contact_name": "Max Müller CEO", "email": "max@acme.de", "website": "acme.de", "source": "webhook"}, indent=2, ensure_ascii=False)
             payload_text = st.text_area("JSON Payload", value=default_payload, height=220)
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("ðŸ“¡ Simulieren", use_container_width=True):
+                if st.button("Simulieren", use_container_width=True):
                     lead_id, dup = simulate_webhook(payload_text)
                     if lead_id:
                         st.success(f"Lead #{lead_id} {'(Duplikat)' if dup else 'gespeichert'}")
                     else:
-                        st.error("UngÃ¼ltiges JSON")
+                        st.error("Ungültiges JSON")
                     st.rerun()
             with c2:
-                if st.button("ðŸ“¡ Simulieren & Analysieren", use_container_width=True):
+                if st.button("Simulieren & Analysieren", use_container_width=True):
                     lead_id, dup = simulate_webhook(payload_text)
                     if lead_id:
                         with get_connection() as conn:
@@ -1101,151 +615,78 @@ def main():
                         with st.spinner("Analyse..."):
                             res = analyze_lead(lead, force=True, run_automations=True)
                         if res:
-                            st.info(f"Score {res[0]}/100 â€” {TIER_EMOJI.get(res[1], '')} {res[1]}")
+                            st.info(f"Score {res[0]}/100 — {TIER_EMOJI.get(res[1], '')} {res[1]}")
                         st.rerun()
-                    else:
-                        st.error("UngÃ¼ltiges JSON")
 
     with tab_analyse:
-        st.markdown("### âš¡ Analyse & Automationen")
+        st.markdown("### Analyse & Automationen")
         c1, c2, c3 = st.columns(3)
         with c1:
-            if st.button("â–¶ï¸ Neue analysieren", use_container_width=True):
+            if st.button("Neue analysieren", use_container_width=True):
                 with st.spinner("Analysiere..."):
                     res = analyze_all(skip_existing=True, run_automations=True)
-                st.success(f"âœ… {len(res)} analysiert")
+                st.success(f"{len(res)} analysiert")
                 st.rerun()
         with c2:
-            if st.button("ðŸ” Alle neu berechnen", use_container_width=True):
+            if st.button("Alle neu berechnen", use_container_width=True):
                 with get_connection() as conn:
                     conn.execute("DELETE FROM analyses")
                     conn.commit()
                 with st.spinner("Rebuild..."):
                     res = analyze_all(skip_existing=False, run_automations=True)
-                st.success(f"âœ… {len(res)} neu berechnet")
+                st.success(f"{len(res)} neu berechnet")
                 st.rerun()
         with c3:
-            if st.button("ðŸ—‘ï¸ AktivitÃ¤ten lÃ¶schen", use_container_width=True):
+            if st.button("Aktivitäten löschen", use_container_width=True):
                 with get_connection() as conn:
                     conn.execute("DELETE FROM activities")
                     conn.commit()
-                st.success("âœ… GelÃ¶scht")
+                st.success("Gelöscht")
                 st.rerun()
 
-        st.divider()
-        st.markdown("#### Workflow-Regeln")
-        for tier, wf in WORKFLOW_RULES.items():
-            c1, c2, c3, c4 = st.columns([1,2,2,3])
-            c1.markdown(f"**{TIER_EMOJI[tier]} {tier}**")
-            c2.caption(f"Owner: {wf['owner']}")
-            c3.caption(f"Aktion: {wf['action']}")
-            c4.caption(f"Sequenz: {wf['sequence']}")
-
-        st.divider()
-        st.markdown("#### Gmail-Scanner")
-        st.info("LÃ¤uft automatisch alle 5 Minuten wenn `start.py` aktiv ist.")
-        st.code("python gmail_scanner.py --once\npython gmail_scanner.py --hours 48", language="bash")
-
     with tab_followup:
-        st.markdown("### ðŸ” Follow-up Automation")
+        st.markdown("### Follow-up Automation")
         c1, c2, c3 = st.columns(3)
         with c1:
-            if st.button("â–¶ï¸ Due Sequenzen jetzt ausfÃ¼hren", use_container_width=True):
-                with st.spinner("Follow-ups werden geprÃ¼ft..."):
+            if st.button("Due Sequenzen ausführen", use_container_width=True):
+                with st.spinner("Follow-ups werden geprüft..."):
                     results = run_due_sequences()
                 st.success(f"{len(results)} Sequenzen verarbeitet")
         with c2:
             df_leads = get_lead_table()
             if not df_leads.empty:
-                lead_options = {
-                    f"#{row.id} | {row.company} | {row.contact} | {row.email}": row.id
-                    for _, row in df_leads.iterrows()
-                    if str(row.email) != "â€”"
-                }
+                lead_options = {f"#{row.id} | {row.company} | {row.contact} | {row.email}": row.id for _, row in df_leads.iterrows() if str(row.email) != "—"}
                 if lead_options:
-                    selected_label = st.selectbox("Lead auswÃ¤hlen", list(lead_options.keys()))
-                    if st.button("âž• Follow-up fÃ¼r Lead starten", use_container_width=True):
+                    selected_label = st.selectbox("Lead auswählen", list(lead_options.keys()))
+                    if st.button("Follow-up für Lead starten", use_container_width=True):
                         seq_id = create_followup_from_lead(lead_options[selected_label], delay_days=0)
                         st.success(f"Sequenz #{seq_id} gestartet")
-                else:
-                    st.info("Keine Leads mit E-Mail vorhanden.")
-            else:
-                st.info("Noch keine Leads vorhanden.")
         with c3:
-            if st.button("ðŸ”„ Refresh", use_container_width=True):
+            if st.button("Refresh", use_container_width=True):
                 st.rerun()
-
-        st.divider()
-        st.markdown("#### Aktive Sequenzen")
         active = get_active_sequences()
         if active:
             for seq in active:
                 with st.expander(f"Lead #{seq['lead_id']} | Stage {seq['stage']} | {seq['status']}"):
-                    st.write({
-                        "Sequence ID": seq["id"],
-                        "Lead ID": seq["lead_id"],
-                        "Stage": seq["stage"],
-                        "Status": seq["status"],
-                        "Next Run": seq["next_run_at"],
-                        "Last Sent": seq["last_sent_at"],
-                        "Channel": seq["channel"],
-                    })
+                    st.write({"Sequence ID": seq["id"], "Lead ID": seq["lead_id"], "Stage": seq["stage"], "Status": seq["status"], "Next Run": seq["next_run_at"], "Last Sent": seq["last_sent_at"], "Channel": seq["channel"]})
         else:
             st.info("Keine aktiven Follow-up-Sequenzen.")
 
     with tab_quellen:
-        st.markdown("### ðŸ”— Quellen & Webhook-Verbindungen")
+        st.markdown("### Quellen & Webhooks")
         df_src = get_lead_table()
         if not df_src.empty:
-            source_stats = df_src.groupby("source").agg(
-                Anzahl=("id", "count"),
-                Hot=("tier", lambda x: (x == "Hot").sum()),
-                Warm=("tier", lambda x: (x == "Warm").sum()),
-                Cold=("tier", lambda x: (x == "Cold").sum())
-            ).reset_index().rename(columns={"source": "Quelle"})
+            source_stats = df_src.groupby("source").agg(Anzahl=("id", "count"), Hot=("tier", lambda x: (x == "Hot").sum()), Warm=("tier", lambda x: (x == "Warm").sum()), Cold=("tier", lambda x: (x == "Cold").sum())).reset_index().rename(columns={"source": "Quelle"})
             st.dataframe(source_stats, use_container_width=True)
-        else:
-            st.info("Noch keine Leads vorhanden.")
-
-        st.divider()
-        st.markdown("#### Webhook Endpoints")
-        endpoints = [
-            ("Tally.so", "POST", "/webhook/tally", "Tally-Formular direkt verbinden"),
-            ("Typeform", "POST", "/webhook/typeform", "Typeform-Webhook eintragen"),
-            ("Calendly", "POST", "/webhook/calendly", "Calendly-Webhook eintragen"),
-            ("Make / Zapier / n8n", "POST", "/webhook/generic", "Generischer JSON-Webhook"),
-            ("Eigene App", "POST", "/webhook/lead", "Standard ScopeOS Payload"),
-        ]
-        for name, method, path, desc in endpoints:
-            e1, e2, e3, e4 = st.columns([2,1,3,4])
-            e1.markdown(f"**{name}**")
-            e2.markdown(f"`{method}`")
-            e3.code(path, language=None)
-            e4.caption(desc)
-
-        st.divider()
-        st.markdown("#### ngrok")
-        st.code("ngrok http 8000", language="bash")
-        st.caption("Gibt eine Ã¶ffentliche URL fÃ¼r Tally, Calendly, Typeform.")
-
-        st.divider()
-        st.markdown("#### Gmail-Integration")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("**Token**")
-            st.success("âœ… gmail_token.json vorhanden") if Path("gmail_token.json").exists() else st.warning("âš ï¸ Noch nicht verbunden")
-        with c2:
-            st.markdown("**Credentials**")
-            st.success("âœ… gmail_credentials.json vorhanden") if Path("gmail_credentials.json").exists() else st.error("âŒ Fehlt")
+        st.code("POST /webhook/tally\nPOST /webhook/generic\nPOST /webhook/lead", language=None)
 
     with tab_log:
-        st.markdown("### ðŸ“‹ AktivitÃ¤ten-Log")
-        c1, c2 = st.columns([3,1])
+        st.markdown("### Aktivitäten-Log")
+        c1, c2 = st.columns([3, 1])
         with c1:
             log_filter = st.multiselect("Typ filtern", ["slack", "crm", "email", "workflow", "gmail_scan", "webhook_ingest", "generic_ingest"], default=[])
         with c2:
-            log_limit = st.selectbox("Max EintrÃ¤ge", [50, 100, 250, 500], index=0)
-
+            log_limit = st.selectbox("Max Einträge", [50, 100, 250, 500], index=0)
         with get_connection() as conn:
             cur = conn.cursor()
             if log_filter:
@@ -1254,21 +695,13 @@ def main():
             else:
                 cur.execute("SELECT * FROM activities ORDER BY id DESC LIMIT ?", (log_limit,))
             acts = cur.fetchall()
-
         if acts:
-            st.caption(f"{len(acts)} EintrÃ¤ge")
             for act in acts:
-                icon = {
-                    "slack": "ðŸ’¬", "crm": "ðŸ¢", "email": "ðŸ“§", "workflow": "âš¡",
-                    "gmail_scan": "ðŸ“©", "webhook_ingest": "ðŸ”—", "generic_ingest": "ðŸŒ"
-                }.get(act["activity_type"], "ðŸ“‹")
-                with st.expander(f"{icon} Lead #{act['lead_id']} â€” {act['activity_type']} â€” {act['status']} â€” {act['created_at']}"):
+                with st.expander(f"{act['activity_type']} — Lead #{act['lead_id']} — {act['created_at']}"):
                     try:
                         st.json(json.loads(act["payload"]))
                     except Exception:
                         st.write(act["payload"])
-        else:
-            st.info("Noch keine AktivitÃ¤ten.")
 
 if __name__ == "__main__":
     main()
